@@ -38,6 +38,10 @@ open Package.swift              # develop in Xcode
 
 Ad-hoc signed builds get a new identity on every rebuild, so macOS may ask you to grant access again. Sign with your Apple Development certificate to keep it stable: `SIGN_IDENTITY="Apple Development: …" scripts/build-app.sh` (see [DEVELOPMENT.md](DEVELOPMENT.md)).
 
+## The menu bar panel, Dock and finding the app
+
+Click the menu bar icon for a glass panel: status at a glance, the **Automatic tiling** switch, layout, a **Tile <current app>** toggle, *Float this window*, Arrange / Undo / Switcher / Commands, and the Focus / No Peek / Clean Space modes. Right-click the icon for Settings and Quit. The icon changes with state (grid = tiling, pause = off, triangle = needs access). If it's hard to spot among other icons, turn on **Settings → General → Also show in the Dock**. Launching the app again (Spotlight, Finder or the Dock) always opens Settings.
+
 ## Shortcuts and the command palette
 
 Remember one: **⌃⌥K** opens the command palette. Type a few letters ("max", "pause", "undo", "monitor") and press Return; it lists every command with its shortcut. The rest are Control + Option plus a key you can reach with your other hand:

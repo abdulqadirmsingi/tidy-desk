@@ -69,6 +69,8 @@ public struct Configuration: Codable, Equatable, Sendable {
     /// User shortcut overrides keyed by `ShortcutAction.rawValue`.
     public var shortcutOverrides: [String: Shortcut] = [:]
     public var appearance = AppearanceSettings()
+    /// Also show the app in the Dock (it is a menu bar app by default).
+    public var showInDock = false
 
     public init() {}
 
@@ -84,6 +86,7 @@ public struct Configuration: Codable, Equatable, Sendable {
         learnedMinimums = try c.value(.learnedMinimums, default: d.learnedMinimums)
         shortcutOverrides = try c.value(.shortcutOverrides, default: d.shortcutOverrides)
         appearance = try c.value(.appearance, default: d.appearance)
+        showInDock = try c.value(.showInDock, default: d.showInDock)
     }
 
     public func settings(for display: DisplayID) -> DisplaySettings {

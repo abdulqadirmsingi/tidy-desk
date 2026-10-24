@@ -27,11 +27,14 @@ final class AppModel {
     private(set) var shortcutFailures: [ShortcutAction: GlobalShortcutCenter.Failure] = [:]
     private(set) var loginItemError: String?
     var selectedDisplayID: DisplayID?
+    /// The app the user was working in when the menu panel opened.
+    private(set) var frontApp: (name: String, bundleID: String?, icon: NSImage?)?
 
     @ObservationIgnored private let shortcutCenter = GlobalShortcutCenter()
     @ObservationIgnored private let switcher = SwitcherController()
     @ObservationIgnored private let palettePresenter = FloatingPanelPresenter()
     @ObservationIgnored private let toast = ToastPresenter()
+    @ObservationIgnored private var statusItem: StatusItemController?
 
     init() {
         let url = ConfigurationStore.defaultFileURL(appFolderName: Branding.name)
@@ -53,6 +56,7 @@ final class AppModel {
             self?.coordinator.settingsChanged(old: old, new: new)
             if old.shortcutOverrides != new.shortcutOverrides { self?.registerShortcuts() }
             if old.appearance.mode != new.appearance.mode { Self.applyAppearance(new.appearance.mode) }
+            if old.showInDock != new.showInDock { self?.applyDockPolicy() }
         }
         Self.applyAppearance(settings.configuration.appearance.mode)
         coordinator.onSuggestion = { [weak self] in self?.present($0) }
@@ -73,7 +77,22 @@ final class AppModel {
     // MARK: Windows
 
     func showSettings() { presenter.show(.settings, model: self) }
-    func showOnboarding() { presenter.show(.onboarding, model: self) }
+    func showOnboarding(at step: OnboardingStep = .welcome) { presenter.show(.onboarding, model: self, startAt: step) }
+
+    /// Remembers which app is in front so the panel can offer per-app controls for it.
+    func captureFrontmostApp() {
+        guard let app = NSWorkspace.shared.frontmostApplication,
+              app.processIdentifier != ProcessInfo.processInfo.processIdentifier, app.activationPolicy == .regular
+        else { return }
+        frontApp = (app.localizedName ?? "App", app.bundleIdentifier, app.icon)
+    }
+
+    /// A menu bar agent by default; optionally also shown in the Dock.
+    private func applyDockPolicy() {
+        let wantsDock = settings.configuration.showInDock
+        NSApp.setActivationPolicy(wantsDock ? .regular : .accessory)
+        if wantsDock { NSApp.activate() }
+    }
 
     func showSwitcher() {
         let groups = coordinator.switcherGroups()
