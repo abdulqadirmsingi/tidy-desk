@@ -90,3 +90,28 @@ struct AccessibilityIntegrationTests {
         #expect(actual.isApproximatelyEqual(to: target, tolerance: 4))
     }
 }
+
+@Suite("Newer config protection (app)", .serialized)
+@MainActor
+struct NewerConfigAppTests {
+    @Test func settingsChangesDoNotClobberANewerFileAndResetBacksItUp() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("TidyDeskNewer-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("config.json")
+        let future = Data(#"{"schemaVersion":99}"#.utf8)
+        try future.write(to: url)
+
+        let store = SettingsStore(store: ConfigurationStore(fileURL: url))
+        #expect(store.loadProblem != nil)
+        store.update { $0.isTilingEnabled = false }
+        store.flush()
+        #expect(try Data(contentsOf: url) == future)
+        #expect(store.saveProblem?.contains("will not be saved") == true)
+
+        store.resetToDefaults()
+        #expect(store.saveProblem == nil)
+        let backups = try FileManager.default.contentsOfDirectory(atPath: dir.path).filter { $0.contains("newer-") }
+        #expect(backups.count == 1)
+    }
+}

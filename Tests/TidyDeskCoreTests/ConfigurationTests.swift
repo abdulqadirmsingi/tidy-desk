@@ -191,3 +191,62 @@ struct ShortcutTests {
         #expect(Set(defaults).count == defaults.count)
     }
 }
+
+@Suite("Newer-version protection")
+struct NewerVersionProtectionTests {
+    private let future = Data(#"{"schemaVersion":99,"futureField":true}"#.utf8)
+
+    private func storeWithFutureFile() throws -> (ConfigurationStore, URL) {
+        let (store, dir) = makeStore()
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try future.write(to: store.fileURL)
+        return (store, dir)
+    }
+
+    @Test func saveRefusesToOverwriteANewerFile() throws {
+        let (store, dir) = try storeWithFutureFile()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        #expect(throws: ConfigurationError.newerSchema(found: 99, supported: Configuration.currentSchemaVersion)) {
+            try store.save(Configuration())
+        }
+        #expect(try Data(contentsOf: store.fileURL) == future)
+    }
+
+    @Test func loadThenSaveCycleKeepsTheNewerFile() throws {
+        let (store, dir) = try storeWithFutureFile()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let loaded = store.load()
+        #expect(loaded.problem != nil)
+        var edited = loaded.configuration
+        edited.isTilingEnabled = false
+        _ = try? store.save(edited)
+        #expect(try Data(contentsOf: store.fileURL) == future)
+    }
+
+    @Test func explicitReplaceBacksTheNewerFileUpFirst() throws {
+        let (store, dir) = try storeWithFutureFile()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try store.save(Configuration(), replacingNewer: true)
+        #expect(store.load().problem == nil)
+        let names = try FileManager.default.contentsOfDirectory(atPath: dir.path).filter { $0.contains("newer-") }
+        #expect(names.count == 1)
+        #expect(try Data(contentsOf: dir.appendingPathComponent(names[0])) == future)
+    }
+
+    @Test func deleteRefusesANewerFile() throws {
+        let (store, dir) = try storeWithFutureFile()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        #expect(throws: ConfigurationError.self) { try store.delete() }
+        #expect(FileManager.default.fileExists(atPath: store.fileURL.path))
+    }
+
+    @Test func currentAndUnversionedFilesStayWritable() throws {
+        let (store, dir) = makeStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try Data(#"{"isTilingEnabled":false}"#.utf8).write(to: store.fileURL)
+        try store.save(Configuration())
+        try store.save(Configuration())
+        #expect(store.load().problem == nil)
+    }
+}

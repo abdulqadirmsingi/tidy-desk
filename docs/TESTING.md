@@ -19,6 +19,7 @@ Run: `swift test` or `scripts/test.sh`. No Accessibility permission needed. Resu
 | Window order | first = primary, append new, removal keeps order, duplicate events, alive-but-unlisted slot kept, swap/move/promote, **display disconnect/reconnect restore**, windows closed while absent not restored |
 | Focus mode | enter/exit, invalidation rules |
 | Configuration | round trip, missing file, older/partial files, missing version, newer schema refused and untouched, corrupt file backed up with original bytes, same-instant corruption never overwrites a backup, backups pruned, wrong-type/empty files, unreadable file set aside, honest messages, per-display override/reset, clamping, delete |
+| Newer-version protection | save/delete refuse a newer file, load→edit→save cycle keeps it, explicit reset backs it up first, current/unversioned files stay writable; same flow through `SettingsStore` |
 | Shortcuts | defaults conflict-free and distinct, conflict detection, display strings |
 | Coordinates | AppKit ↔ AX flip |
 

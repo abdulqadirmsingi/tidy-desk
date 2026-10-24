@@ -78,7 +78,17 @@ public struct ConfigurationStore: Sendable {
         }
     }
 
-    public func save(_ configuration: Configuration) throws {
+    /// Writes the configuration atomically.
+    ///
+    /// A file written by a newer version of the app is never overwritten: this throws
+    /// `ConfigurationError.newerSchema` and leaves it untouched. Pass `replacingNewer` only for an
+    /// explicit user action such as a reset; the newer file is then moved aside first, not lost.
+    public func save(_ configuration: Configuration, replacingNewer: Bool = false) throws {
+        if let found = storedNewerSchemaVersion() {
+            guard replacingNewer, backUp(marker: Self.newerMarker) else {
+                throw ConfigurationError.newerSchema(found: found, supported: Configuration.currentSchemaVersion)
+            }
+        }
         try FileManager.default.createDirectory(
             at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         let encoder = JSONEncoder()
@@ -86,24 +96,38 @@ public struct ConfigurationStore: Sendable {
         try encoder.encode(configuration).write(to: fileURL, options: .atomic)
     }
 
+    /// Deletes the stored file, except one from a newer version.
     public func delete() throws {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
+        if let found = storedNewerSchemaVersion() {
+            throw ConfigurationError.newerSchema(found: found, supported: Configuration.currentSchemaVersion)
+        }
         try FileManager.default.removeItem(at: fileURL)
     }
 
+    /// Schema version of the file on disk if it is newer than this build understands.
+    private func storedNewerSchemaVersion() -> Int? {
+        guard let data = try? Data(contentsOf: fileURL),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let version = object["schemaVersion"] as? Int,
+              version > Configuration.currentSchemaVersion
+        else { return nil }
+        return version
+    }
+
     private func unusable() -> LoadResult {
-        let backedUp = backUpCorruptFile()
+        let backedUp = backUp(marker: Self.backupMarker)
         return LoadResult(configuration: Configuration(), problem: .corrupt(backedUp: backedUp))
     }
 
     /// Moves the unusable file aside under a unique name so it is never overwritten by a later save.
-    private func backUpCorruptFile() -> Bool {
+    private func backUp(marker: String) -> Bool {
         let fileManager = FileManager.default
         let stamp = Int(Date().timeIntervalSince1970 * 1000)
-        var backup = fileURL.appendingPathExtension("\(Self.backupMarker)\(stamp)")
+        var backup = fileURL.appendingPathExtension("\(marker)\(stamp)")
         var suffix = 1
         while fileManager.fileExists(atPath: backup.path) {
-            backup = fileURL.appendingPathExtension("\(Self.backupMarker)\(stamp)-\(suffix)")
+            backup = fileURL.appendingPathExtension("\(marker)\(stamp)-\(suffix)")
             suffix += 1
         }
         do {
@@ -111,14 +135,14 @@ public struct ConfigurationStore: Sendable {
         } catch {
             return false
         }
-        pruneBackups()
+        pruneBackups(marker: marker)
         return true
     }
 
     /// Keeps the newest few backups so repeated corruption cannot fill the disk.
-    private func pruneBackups() {
+    private func pruneBackups(marker: String) {
         let directory = fileURL.deletingLastPathComponent()
-        let prefix = fileURL.lastPathComponent + "." + Self.backupMarker
+        let prefix = fileURL.lastPathComponent + "." + marker
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else { return }
         let backups = names.filter { $0.hasPrefix(prefix) }.sorted { lhs, rhs in
             (Self.backupStamp(lhs, prefix), lhs) < (Self.backupStamp(rhs, prefix), rhs)
@@ -133,5 +157,6 @@ public struct ConfigurationStore: Sendable {
     }
 
     static let backupMarker = "corrupt-"
+    static let newerMarker = "newer-"
     static let maxBackups = 5
 }
