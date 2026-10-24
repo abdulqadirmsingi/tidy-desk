@@ -17,6 +17,7 @@ Run: `swift test` or `scripts/test.sh`. No Accessibility permission needed. Resu
 | Ratio inference | resize feeds back into layout (primary and secondary), unchanged frame, clamping |
 | Constraint learning | learns on refusal, ignores accepted/implausible, never lowers a minimum |
 | Window order | first = primary, append new, removal keeps order, duplicate events, alive-but-unlisted slot kept, swap/move/promote, **display disconnect/reconnect restore**, windows closed while absent not restored |
+| Placement budget | refusal cap, one-time stubborn signal, success forgives, per-window, self-moving windows, slow corrections ignored, reset/retain, bounded loop |
 | Focus mode | enter/exit, invalidation rules |
 | Configuration | round trip, missing file, older/partial files, missing version, newer schema refused and untouched, corrupt file backed up, per-display override/reset, clamping, delete |
 | Shortcuts | defaults conflict-free and distinct, conflict detection, display strings |

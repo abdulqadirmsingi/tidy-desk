@@ -46,7 +46,7 @@ UI state (`TilingUIState`, `AppModel`) is separate from runtime window state ins
 
 ## Reconciliation and placement
 
-`reconcile` = up to 3 passes of: refresh displays → discover → update order (`WindowOrder.reconcile`) → plan each display (`TilePlanner`) → apply (`WindowPlacementService.place`: set position, set size, re-set position, read back). A refused resize is compared with the request by `ConstraintLearner`; a learned minimum is stored (silently, no re-trigger) and the pass repeats. Each window has a two-attempt budget; after that it is *stubborn*, excluded from planning and left floating until the user changes settings or chooses *Arrange Now*. All of this runs on the main actor so a plan is always applied against the state it was computed from.
+`reconcile` = up to 3 passes of: refresh displays → discover → update order (`WindowOrder.reconcile`) → plan each display (`TilePlanner`) → apply (`WindowPlacementService.place`: set position, set size, re-set position, read back). A refused resize is compared with the request by `ConstraintLearner`; a learned minimum is stored (silently, no re-trigger) and the pass repeats. Retry limits live in the pure, tested `PlacementBudget`: each window gets two refusals, and an app that moves itself more than four times in ten seconds without a mouse gesture is treated the same. After that the window is *stubborn*, excluded from planning and left floating until the user changes settings or chooses *Arrange Now*. All of this runs on the main actor so a plan is always applied against the state it was computed from.
 
 First-seen frames are remembered per window so *Restore Previous Arrangement* can put windows back (and pause tiling).
 
