@@ -60,6 +60,8 @@ final class SettingsStore {
             })
     }
 
+    /// Resets to defaults. This is an explicit user action, so a file from a newer version is
+    /// replaced, but only after being moved aside as a backup.
     func resetToDefaults() {
         saveTask?.cancel()
         let old = configuration
@@ -67,24 +69,22 @@ final class SettingsStore {
         fresh.hasCompletedOnboarding = old.hasCompletedOnboarding
         configuration = fresh
         loadProblem = nil
-        flush()
+        flush(replacingNewer: true)
         onChange?(old, fresh)
     }
 
-    /// Writes immediately; used on quit and after resets.
-    func flush() {
+    /// Writes immediately; used on quit and after resets. Never overwrites a newer version's file.
+    func flush(replacingNewer: Bool = false) {
         saveTask?.cancel()
         do {
-            try store.save(configuration)
+            try store.save(configuration, replacingNewer: replacingNewer)
             saveProblem = nil
+        } catch let error as ConfigurationError {
+            saveProblem = "Your changes will not be saved. " + (error.errorDescription ?? "")
+                + " Update the app, or reset settings in General to replace that file (it is backed up first)."
         } catch {
             saveProblem = "Settings could not be saved: \(error.localizedDescription)"
         }
-    }
-
-    func deleteStoredFile() {
-        saveTask?.cancel()
-        try? store.delete()
     }
 
     private func scheduleSave() {

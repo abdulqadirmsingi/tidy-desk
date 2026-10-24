@@ -67,7 +67,7 @@ Layouts are described as **columns of stacked tiles** in a landscape frame:
 
 ## Persistence
 
-`config.json` in `~/Library/Application Support/<AppName>/`, written atomically, debounced 0.4 s, flushed on quit. Fields decode with defaults, so older files load after upgrades. `ConfigurationMigration` has an (currently empty) step list keyed by schema version; newer-than-supported files are never overwritten; unreadable files are moved aside as `config.json.corrupt-<timestamp>`. Nothing about windows (titles, references, frames) is stored — only bundle identifiers of excluded apps and learned minimum sizes.
+`config.json` in `~/Library/Application Support/<AppName>/`, written atomically, debounced 0.4 s, flushed on quit. Fields decode with defaults, so older files load after upgrades. `ConfigurationMigration` has an (currently empty) step list keyed by schema version; newer-than-supported files are never overwritten or deleted (`save` throws, the UI says changes won't be saved) unless the user explicitly resets, in which case the file is first moved aside as `config.json.newer-<ms>`; unreadable or invalid files (including ones that exist but cannot be read) are moved aside under a unique `config.json.corrupt-<ms>` name, the newest 5 are kept, and the UI message says whether the backup actually succeeded. Nothing about windows (titles, references, frames) is stored — only bundle identifiers of excluded apps and learned minimum sizes.
 
 ## Permission handling
 

@@ -8,6 +8,10 @@ private func makeStore() -> (ConfigurationStore, URL) {
     return (ConfigurationStore(fileURL: dir.appendingPathComponent("config.json")), dir)
 }
 
+private func backups(in directory: URL) throws -> [String] {
+    try FileManager.default.contentsOfDirectory(atPath: directory.path).filter { $0.contains("corrupt-") }
+}
+
 @Suite("Configuration persistence")
 struct ConfigurationTests {
     @Test func roundTripPreservesEverything() throws {
@@ -65,10 +69,74 @@ struct ConfigurationTests {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try Data("not json".utf8).write(to: store.fileURL)
         let result = store.load()
-        #expect(result.problem == .corrupt)
+        #expect(result.problem == .corrupt(backedUp: true))
         #expect(result.configuration == Configuration())
         let files = try FileManager.default.contentsOfDirectory(atPath: dir.path)
         #expect(files.contains { $0.contains("corrupt") })
+    }
+
+    @Test func backupKeepsTheOriginalBytesAndRemovesTheBrokenFile() throws {
+        let (store, dir) = makeStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let broken = Data("{ broken".utf8)
+        try broken.write(to: store.fileURL)
+        _ = store.load()
+        #expect(!FileManager.default.fileExists(atPath: store.fileURL.path))
+        let backup = try #require(try backups(in: dir).first)
+        #expect(try Data(contentsOf: dir.appendingPathComponent(backup)) == broken)
+    }
+
+    @Test func repeatedCorruptionInTheSameInstantNeverOverwritesABackup() throws {
+        let (store, dir) = makeStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        for round in 0..<3 {
+            try Data("broken \(round)".utf8).write(to: store.fileURL)
+            #expect(store.load().problem == .corrupt(backedUp: true))
+        }
+        let contents = try backups(in: dir).map { try String(contentsOf: dir.appendingPathComponent($0), encoding: .utf8) }
+        #expect(Set(contents) == ["broken 0", "broken 1", "broken 2"])
+    }
+
+    @Test func oldBackupsArePruned() throws {
+        let (store, dir) = makeStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        for round in 0..<(ConfigurationStore.maxBackups + 3) {
+            try Data("broken \(round)".utf8).write(to: store.fileURL)
+            _ = store.load()
+        }
+        #expect(try backups(in: dir).count == ConfigurationStore.maxBackups)
+    }
+
+    @Test func wellFormedJsonWithWrongTypesAndEmptyFilesCountAsCorrupt() throws {
+        for content in [#"{"isTilingEnabled":"yes"}"#, "", "[]"] {
+            let (store, dir) = makeStore()
+            defer { try? FileManager.default.removeItem(at: dir) }
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try Data(content.utf8).write(to: store.fileURL)
+            #expect(store.load().problem == .corrupt(backedUp: true), "content: \(content)")
+        }
+    }
+
+    @Test func unreadableFileIsSetAsideNotTreatedAsMissing() throws {
+        let (store, dir) = makeStore()
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: store.fileURL.path)
+            try? FileManager.default.removeItem(at: dir)
+        }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try Data(#"{"isTilingEnabled":false}"#.utf8).write(to: store.fileURL)
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: store.fileURL.path)
+        let result = store.load()
+        #expect(result.problem != nil)
+        #expect(result.configuration == Configuration())
+    }
+
+    @Test func messagesDoNotClaimABackupThatWasNotMade() {
+        #expect(ConfigurationError.corrupt(backedUp: true).localizedDescription.contains("backup"))
+        #expect(ConfigurationError.corrupt(backedUp: false).localizedDescription.contains("could not be backed up"))
     }
 
     @Test func displayOverridesAreIndependentAndRestorable() {
@@ -121,5 +189,64 @@ struct ShortcutTests {
     @Test func everyActionHasADistinctDefault() {
         let defaults = ShortcutAction.allCases.map(\.defaultShortcut)
         #expect(Set(defaults).count == defaults.count)
+    }
+}
+
+@Suite("Newer-version protection")
+struct NewerVersionProtectionTests {
+    private let future = Data(#"{"schemaVersion":99,"futureField":true}"#.utf8)
+
+    private func storeWithFutureFile() throws -> (ConfigurationStore, URL) {
+        let (store, dir) = makeStore()
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try future.write(to: store.fileURL)
+        return (store, dir)
+    }
+
+    @Test func saveRefusesToOverwriteANewerFile() throws {
+        let (store, dir) = try storeWithFutureFile()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        #expect(throws: ConfigurationError.newerSchema(found: 99, supported: Configuration.currentSchemaVersion)) {
+            try store.save(Configuration())
+        }
+        #expect(try Data(contentsOf: store.fileURL) == future)
+    }
+
+    @Test func loadThenSaveCycleKeepsTheNewerFile() throws {
+        let (store, dir) = try storeWithFutureFile()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let loaded = store.load()
+        #expect(loaded.problem != nil)
+        var edited = loaded.configuration
+        edited.isTilingEnabled = false
+        _ = try? store.save(edited)
+        #expect(try Data(contentsOf: store.fileURL) == future)
+    }
+
+    @Test func explicitReplaceBacksTheNewerFileUpFirst() throws {
+        let (store, dir) = try storeWithFutureFile()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try store.save(Configuration(), replacingNewer: true)
+        #expect(store.load().problem == nil)
+        let names = try FileManager.default.contentsOfDirectory(atPath: dir.path).filter { $0.contains("newer-") }
+        #expect(names.count == 1)
+        #expect(try Data(contentsOf: dir.appendingPathComponent(names[0])) == future)
+    }
+
+    @Test func deleteRefusesANewerFile() throws {
+        let (store, dir) = try storeWithFutureFile()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        #expect(throws: ConfigurationError.self) { try store.delete() }
+        #expect(FileManager.default.fileExists(atPath: store.fileURL.path))
+    }
+
+    @Test func currentAndUnversionedFilesStayWritable() throws {
+        let (store, dir) = makeStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try Data(#"{"isTilingEnabled":false}"#.utf8).write(to: store.fileURL)
+        try store.save(Configuration())
+        try store.save(Configuration())
+        #expect(store.load().problem == nil)
     }
 }
