@@ -171,3 +171,11 @@ struct NewerConfigAppTests {
         #expect(backups.count == 1)
     }
 }
+
+@Suite("Stale Accessibility grant")
+@MainActor
+struct StaleGrantTests {
+    @Test func resetTargetsOnlyAccessibilityForTheGivenApp() {
+        #expect(AccessibilityPermission.resetArguments(bundleID: "com.example.app") == ["reset", "Accessibility", "com.example.app"])
+    }
+}

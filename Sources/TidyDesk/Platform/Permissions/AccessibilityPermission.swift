@@ -57,6 +57,30 @@ final class AccessibilityPermission {
         _ = AXIsProcessTrustedWithOptions(options)
     }
 
+    /// Arguments for `tccutil`, which removes this app's Accessibility entry so macOS asks again.
+    /// Needed when System Settings shows the app switched on but the grant belongs to an older build:
+    /// macOS ties the permission to the code signature, which changes with every ad-hoc rebuild.
+    nonisolated static func resetArguments(bundleID: String) -> [String] { ["reset", "Accessibility", bundleID] }
+
+    /// Clears a stale grant for this app only, then asks again. Returns false if it could not be cleared.
+    func resetStaleGrant() async -> Bool {
+        guard let bundleID = Bundle.main.bundleIdentifier else { return false }
+        let succeeded = await withCheckedContinuation { continuation in
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+            process.arguments = Self.resetArguments(bundleID: bundleID)
+            process.standardOutput = nil
+            process.standardError = nil
+            process.terminationHandler = { continuation.resume(returning: $0.terminationStatus == 0) }
+            do { try process.run() } catch { continuation.resume(returning: false) }
+        }
+        if succeeded {
+            requestPrompt()
+            openSystemSettings()
+        }
+        return succeeded
+    }
+
     func openSystemSettings() {
         guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
         else { return }

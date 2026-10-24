@@ -7,6 +7,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=../Config/branding.env
 source "$ROOT/Config/branding.env"
+# Optional per-machine settings (git-ignored), e.g. SIGN_IDENTITY="Apple Development: Name (TEAMID)".
+# A stable identity keeps the Accessibility grant valid across rebuilds.
+if [[ -f "$ROOT/Config/local.env" ]]; then source "$ROOT/Config/local.env"; fi
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 BUILD_DIR="$ROOT/build"
 APP="$BUILD_DIR/$APP_NAME.app"

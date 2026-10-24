@@ -218,6 +218,7 @@ struct PrivacySettings: View {
                     }
                     Text("If you just enabled it and nothing changes, quit and reopen \(Branding.name).")
                         .font(.callout).foregroundStyle(.secondary)
+                    StaleGrantHelp()
                 }
             }
             Section("What \(Branding.name) never does") {

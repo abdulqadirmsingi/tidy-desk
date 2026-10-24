@@ -79,8 +79,17 @@ extension OnboardingView {
                     }
                 }
                 .padding(.top, 6)
+                if !granted && showStaleHelp {
+                    Divider().opacity(0.4)
+                    StaleGrantHelp().transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
             }
             .padding(22)
+            .task {
+                // Give a normal grant time to arrive before suggesting something is off.
+                try? await Task.sleep(for: OnboardingView.staleHelpDelay)
+                withAnimation(.smooth) { showStaleHelp = true }
+            }
             .frame(maxWidth: 460)
             .glassPanel()
         }
@@ -100,6 +109,7 @@ extension OnboardingView {
                         Button("Check Again") { model.permission.refresh() }.glassButton()
                         Button("Open Settings") { model.permission.openSystemSettings() }.glassButton()
                     }
+                    StaleGrantHelp()
                     Text("You can continue, but nothing is arranged until access is granted.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
