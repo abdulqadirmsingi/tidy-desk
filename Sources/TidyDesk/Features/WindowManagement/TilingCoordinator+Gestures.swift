@@ -3,8 +3,6 @@ import TidyDeskCore
 
 /// Distinguishing the user's mouse gestures from our own writes and from app-driven changes.
 extension TilingCoordinator {
-    private static let unsolicitedWindow: TimeInterval = 10
-    private static let maxUnsolicitedPerWindow = 4
     private static let gestureSettleDelay: Duration = .milliseconds(80)
 
     func handleGeometry(_ element: AXElement) {
@@ -24,12 +22,7 @@ extension TilingCoordinator {
         }
         // Not our write and not a mouse gesture: an app moved itself. Allow a few corrections,
         // then stop so we never fight it.
-        let now = Date()
-        var recent = (unsolicitedEvents[id] ?? []).filter { now.timeIntervalSince($0) < Self.unsolicitedWindow }
-        recent.append(now)
-        unsolicitedEvents[id] = recent
-        if recent.count > Self.maxUnsolicitedPerWindow {
-            stubborn.insert(id)
+        if budget.recordUnsolicited(id) {
             ui.notice = "A window keeps moving itself and was left floating."
         }
         scheduleReconcile()

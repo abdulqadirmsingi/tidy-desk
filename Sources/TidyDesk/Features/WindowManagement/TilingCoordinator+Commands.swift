@@ -8,9 +8,7 @@ extension TilingCoordinator {
     // MARK: Tiling control
 
     func arrangeNow() {
-        stubborn.removeAll()
-        attempts.removeAll()
-        unsolicitedEvents.removeAll()
+        budget.reset()
         ui.notice = nil
         reconcile(manual: true)
     }

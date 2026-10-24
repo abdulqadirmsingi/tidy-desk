@@ -6,8 +6,6 @@ enum TilingTuning {
     static let wakeSettleDelay: Duration = .seconds(1)
     /// Geometry notifications this soon after our own write are treated as echoes.
     static let ownMoveSuppression: TimeInterval = 0.7
-    /// Refusals tolerated per window before it is left floating.
-    static let maxAttemptsPerWindow = 2
     static let maxPassesPerReconcile = 3
     static let cleanSpaceInset = CGSize(width: 0.08, height: 0.06)
 }
@@ -45,9 +43,8 @@ final class TilingCoordinator {
     var cleanSpaceDisplay: DisplayID?
     var noPeekActive = false
     var userFloating: Set<WindowID> = []
-    /// Windows that refused placement; excluded from planning until the user intervenes.
-    var stubborn: Set<WindowID> = []
-    var attempts: [WindowID: Int] = [:]
+    /// Caps retries; stubborn windows are excluded from planning until the user intervenes.
+    var budget = PlacementBudget()
     var originalFrames: [WindowID: CGRect] = [:]
     var expected: [WindowID: Expectation] = [:]
     var stackActive: [StackKey: WindowID] = [:]
@@ -56,7 +53,6 @@ final class TilingCoordinator {
     var mouseUpMonitor: Any?
     var lastActiveWindow: WindowID?
     var isAsleep = false
-    var unsolicitedEvents: [WindowID: [Date]] = [:]
     var preFocusFrame: CGRect?
 
     private var reconcileTask: Task<Void, Never>?
@@ -94,8 +90,7 @@ final class TilingCoordinator {
             || old.displays.mapValues({ [$0.layout.rawValue, "\($0.maxWindows)"] })
             != new.displays.mapValues({ [$0.layout.rawValue, "\($0.maxWindows)"] })
         if layoutChanged { exitPresentationModes() }
-        stubborn.removeAll()
-        attempts.removeAll()
+        budget.reset()
         scheduleReconcile(delay: .zero)
     }
 
@@ -192,7 +187,7 @@ final class TilingCoordinator {
         }
         originalFrames = originalFrames.filter { found.alive.contains($0.key) }
         userFloating.formIntersection(found.alive)
-        stubborn.formIntersection(found.alive)
+        budget.retain(alive: found.alive)
         monitor.sync(windows: found.eligible)
         if let focused = focus.focusedWindow, tracked[focused] == nil {
             focus.handle(.windowClosed(focused))
@@ -201,7 +196,7 @@ final class TilingCoordinator {
 
         var present: [DisplayID: [WindowID]] = [:]
         let candidates = found.eligible
-            .filter { !userFloating.contains($0.id) && !stubborn.contains($0.id) }
+            .filter { !userFloating.contains($0.id) && !budget.isStubborn($0.id) }
             .sorted { ($0.frame.minX, $0.frame.minY) < ($1.frame.minX, $1.frame.minY) }
         for window in candidates {
             if let display = DisplayService.display(for: window.frame, in: displays) {
@@ -250,7 +245,7 @@ final class TilingCoordinator {
             expected[window.id] = Expectation(
                 frames: [target, actual], deadline: Date().addingTimeInterval(TilingTuning.ownMoveSuppression))
             if ConstraintLearner.accepted(requested: target, actual: actual) {
-                attempts[window.id] = nil
+                budget.recordSuccess(window.id)
                 return false
             }
             return handleRefusal(window, requested: target, actual: actual)
@@ -278,12 +273,9 @@ final class TilingCoordinator {
         return markAttempt(window.id)
     }
 
-    /// Counts a failed attempt; after the cap the window is left alone so we never fight it.
+    /// Counts a failed attempt; once the budget is spent the window is left alone so we never fight it.
     private func markAttempt(_ id: WindowID) -> Bool {
-        let count = (attempts[id] ?? 0) + 1
-        attempts[id] = count
-        guard count >= TilingTuning.maxAttemptsPerWindow else { return false }
-        stubborn.insert(id)
+        guard budget.recordRefusal(id) else { return false }
         ui.notice = "Some windows can’t be resized and were left floating."
         return true
     }
@@ -344,7 +336,7 @@ final class TilingCoordinator {
             plan.placements.filter { if case .tile = $0.role { true } else { false } }.count
         }
         let managedFloating = lastPlans.values.reduce(0) { $0 + $1.placements.filter { $0.role == .floating }.count }
-        ui.floatingCount = managedFloating + userFloating.count + stubborn.count
+        ui.floatingCount = managedFloating + userFloating.count + budget.stubborn.count
         ui.isFocusActive = focus.isActive && cleanSpaceDisplay == nil
         ui.isCleanSpaceActive = cleanSpaceDisplay != nil
         ui.isNoPeekActive = noPeekActive
