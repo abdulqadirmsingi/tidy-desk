@@ -30,6 +30,7 @@ final class AppModel {
 
     @ObservationIgnored private let shortcutCenter = GlobalShortcutCenter()
     @ObservationIgnored private let switcher = SwitcherController()
+    @ObservationIgnored private let palettePresenter = FloatingPanelPresenter()
 
     init() {
         let url = ConfigurationStore.defaultFileURL(appFolderName: Branding.name)
@@ -77,6 +78,36 @@ final class AppModel {
         switcher.show(groups: groups) { [weak self] id in self?.coordinator.activate(id) }
     }
 
+    func showCommandPalette() {
+        let shortcuts = settings.configuration.shortcuts
+        var commands = ShortcutAction.allCases.map { action in
+            PaletteCommand(
+                item: CommandItem(
+                    id: action.rawValue, title: action.title, keywords: action.keywords,
+                    shortcutText: shortcuts.bindings[action]?.display),
+                run: { [weak self] in self?.perform(action) })
+        }
+        commands += [
+            PaletteCommand(
+                item: CommandItem(id: "settings", title: "Open Settings", keywords: ["preferences", "options", "configure"]),
+                run: { [weak self] in self?.showSettings() }),
+            PaletteCommand(
+                item: CommandItem(id: "tour", title: "Show Welcome Tour", keywords: ["onboarding", "help", "intro"]),
+                run: { [weak self] in self?.showOnboarding() }),
+        ]
+        let model = PaletteModel(commands: commands)
+        palettePresenter.present(
+            CommandPaletteView(
+                model: model,
+                onRun: { [weak self] command in
+                    // Close first so the previously active window is the target again.
+                    self?.palettePresenter.dismiss()
+                    Task { @MainActor in command.run() }
+                },
+                onDismiss: { [weak self] in self?.palettePresenter.dismiss() }),
+            size: NSSize(width: 560, height: 400), anchor: .upper)
+    }
+
     func completeOnboarding() {
         settings.update { $0.hasCompletedOnboarding = true }
         presenter.close(.onboarding)
@@ -107,6 +138,7 @@ final class AppModel {
         case .noPeek: coordinator.toggleNoPeek()
         case .cleanSpace: coordinator.toggleCleanSpace()
         case .windowSwitcher: showSwitcher()
+        case .commandPalette: showCommandPalette()
         case .growTile: coordinator.adjustActiveTile(grow: true)
         case .shrinkTile: coordinator.adjustActiveTile(grow: false)
         case .resetSizes: coordinator.resetSizes()

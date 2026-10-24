@@ -37,9 +37,13 @@ open Package.swift              # develop in Xcode
 
 Ad-hoc signed builds get a new identity on every rebuild, so macOS may ask you to grant access again. Sign with your Apple Development certificate to keep it stable: `SIGN_IDENTITY="Apple Development: …" scripts/build-app.sh` (see [DEVELOPMENT.md](DEVELOPMENT.md)).
 
-## Default shortcuts (Control + Option)
+## Shortcuts and the command palette
 
-`A` arrange now · `T` pause/resume · `L` Grid/Columns · `Z` restore previous · `←/→` swap with previous/next tile · `D` / `⇧D` move to next/previous display · `F` Focus · `N` No Peek · `C` Clean Space · `Tab` window switcher · `=` / `-` grow/shrink tile · `0` reset sizes · `↑` cycle stack · `G` float/tile active window (also in the menu bar as *Float Active Window*). All are configurable in Settings → Shortcuts.
+Remember one: **⌃⌥K** opens the command palette. Type a few letters ("max", "pause", "undo", "monitor") and press Return; it lists every command with its shortcut. The rest are Control + Option plus a key you can reach with your other hand:
+
+`↩` arrange now · `P` pause/resume · `L` Grid/Columns · `U` restore previous · `←` `→` swap with previous/next tile · `[` `]` move to previous/next display · `M` Focus · `N` No Peek · `H` Clean Space · `Tab` window switcher · `=` `-` grow/shrink tile · `0` reset sizes · `↑` cycle stack · `↓` float/tile active window.
+
+All are configurable in Settings → Shortcuts. The window switcher (⌃⌥Tab) groups windows by display; use arrows or Tab to move, **1–9** to jump, Return to switch, Esc to close.
 
 ## Current limitations
 

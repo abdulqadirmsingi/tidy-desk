@@ -9,78 +9,67 @@ final class SwitcherModel {
     typealias Group = TilingCoordinator.SwitcherGroup
 
     let groups: [Group]
-    private(set) var selected: WindowID?
+    private let navigation: SwitcherNavigation
+    private(set) var position: SwitcherPosition?
 
     init(groups: [Group]) {
         self.groups = groups
-        selected = groups.first?.entries.first?.id
+        navigation = SwitcherNavigation(groupSizes: groups.map(\.entries.count))
+        position = navigation.first
     }
 
-    private var flat: [WindowID] { groups.flatMap { $0.entries.map(\.id) } }
-
-    func moveSelection(by offset: Int) {
-        let ids = flat
-        guard !ids.isEmpty else { return }
-        let index = selected.flatMap { ids.firstIndex(of: $0) } ?? 0
-        selected = ids[(index + offset + ids.count) % ids.count]
+    var selectedID: WindowID? {
+        guard let position, groups.indices.contains(position.group),
+              groups[position.group].entries.indices.contains(position.index)
+        else { return nil }
+        return groups[position.group].entries[position.index].id
     }
 
-    func select(_ id: WindowID) { selected = id }
-}
+    func move(_ move: SwitcherMove) {
+        guard let position else { return }
+        self.position = navigation.move(position, move)
+    }
 
-/// A panel that can take key events without activating the app, so the previously active window
-/// keeps its place if the switcher is dismissed.
-private final class SwitcherPanel: NSPanel {
-    override var canBecomeKey: Bool { true }
+    func select(number: Int) {
+        if let target = navigation.position(atFlat: number - 1) { position = target }
+    }
+
+    func select(_ id: WindowID) {
+        for (group, value) in groups.enumerated() {
+            if let index = value.entries.firstIndex(where: { $0.id == id }) {
+                position = SwitcherPosition(group: group, index: index)
+            }
+        }
+    }
+
+    /// 1-based reading-order number for the quick-pick badge; only the first nine can be typed.
+    func number(of id: WindowID) -> Int? {
+        var count = 0
+        for group in groups {
+            for entry in group.entries {
+                count += 1
+                if entry.id == id { return count <= 9 ? count : nil }
+            }
+        }
+        return nil
+    }
 }
 
 @MainActor
 final class SwitcherController {
-    private var panel: SwitcherPanel?
-    private var resignToken: NSObjectProtocol?
+    private let presenter = FloatingPanelPresenter()
 
     func show(groups: [SwitcherModel.Group], onSelect: @escaping (WindowID) -> Void) {
-        dismiss()
         let model = SwitcherModel(groups: groups)
-        let view = SwitcherView(
-            model: model,
-            onActivate: { [weak self] id in
-                self?.dismiss()
-                onSelect(id)
-            },
-            onDismiss: { [weak self] in self?.dismiss() })
-        let host = NSHostingView(rootView: view)
-        host.setFrameSize(host.fittingSize)
-
-        let panel = SwitcherPanel(
-            contentRect: NSRect(origin: .zero, size: host.fittingSize),
-            styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        panel.contentView = host
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.level = .modalPanel
-        panel.hasShadow = true
-        panel.isReleasedWhenClosed = false
-        if let screen = NSScreen.main {
-            let origin = NSPoint(
-                x: screen.frame.midX - panel.frame.width / 2, y: screen.frame.midY - panel.frame.height / 2)
-            panel.setFrameOrigin(origin)
-        }
-        panel.makeKeyAndOrderFront(nil)
-        resignToken = NotificationCenter.default.addObserver(
-            forName: NSWindow.didResignKeyNotification, object: panel, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.dismiss() }
-        }
-        self.panel = panel
-    }
-
-    func dismiss() {
-        if let resignToken { NotificationCenter.default.removeObserver(resignToken) }
-        resignToken = nil
-        panel?.orderOut(nil)
-        panel?.close()
-        panel = nil
+        presenter.present(
+            SwitcherView(
+                model: model,
+                onActivate: { [weak self] id in
+                    self?.presenter.dismiss()
+                    onSelect(id)
+                },
+                onDismiss: { [weak self] in self?.presenter.dismiss() }),
+            anchor: .center)
     }
 }
 
@@ -88,59 +77,101 @@ struct SwitcherView: View {
     let model: SwitcherModel
     let onActivate: (WindowID) -> Void
     let onDismiss: () -> Void
+
     @FocusState private var hasFocus: Bool
+    @State private var appeared = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var selection
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 18) {
             if model.groups.isEmpty {
                 Label("No windows to switch to", systemImage: "rectangle.dashed")
                     .foregroundStyle(.secondary)
                     .padding(8)
             }
             ForEach(model.groups) { group in
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(group.displayName).font(.caption).foregroundStyle(.secondary)
-                    HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Label(group.displayName, systemImage: "display").font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                    HStack(spacing: 12) {
                         ForEach(group.entries) { entry in card(entry) }
                     }
                 }
             }
+            Text("← → ↑ ↓ choose   ·   1–9 jump   ·   ⏎ switch   ·   esc close")
+                .font(.caption).foregroundStyle(.tertiary)
+                .frame(maxWidth: .infinity)
         }
-        .padding(20)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+        .padding(22)
+        .glassPanel(cornerRadius: 26)
+        .scaleEffect(appeared || reduceMotion ? 1 : 0.95)
+        .opacity(appeared || reduceMotion ? 1 : 0)
         .focusable()
         .focusEffectDisabled()
         .focused($hasFocus)
-        .onAppear { hasFocus = true }
-        .onKeyPress(.leftArrow) { model.moveSelection(by: -1); return .handled }
-        .onKeyPress(.rightArrow) { model.moveSelection(by: 1); return .handled }
-        .onKeyPress(.upArrow) { model.moveSelection(by: -1); return .handled }
-        .onKeyPress(.downArrow) { model.moveSelection(by: 1); return .handled }
-        .onKeyPress(.tab) { model.moveSelection(by: 1); return .handled }
+        .onAppear {
+            hasFocus = true
+            withAnimation(.smooth(duration: 0.2)) { appeared = true }
+        }
+        .onKeyPress(.leftArrow) { move(.left) }
+        .onKeyPress(.rightArrow) { move(.right) }
+        .onKeyPress(.upArrow) { move(.up) }
+        .onKeyPress(.downArrow) { move(.down) }
+        .onKeyPress(.tab) { move(.right) }
         .onKeyPress(.return) {
-            if let id = model.selected { onActivate(id) }
+            if let id = model.selectedID { onActivate(id) }
             return .handled
         }
         .onKeyPress(.escape) { onDismiss(); return .handled }
+        .onKeyPress(characters: .decimalDigits, phases: .down) { press in
+            guard let number = Int(press.characters) else { return .ignored }
+            model.select(number: number)
+            if let id = model.selectedID { onActivate(id) }
+            return .handled
+        }
+    }
+
+    private func move(_ move: SwitcherMove) -> KeyPress.Result {
+        withAnimation(reduceMotion ? nil : .snappy(duration: 0.18)) { model.move(move) }
+        return .handled
     }
 
     private func card(_ entry: TilingCoordinator.SwitcherEntry) -> some View {
-        let isSelected = model.selected == entry.id
-        return VStack(spacing: 6) {
-            if let icon = entry.icon {
-                Image(nsImage: icon).resizable().frame(width: 48, height: 48)
-            } else {
-                Image(systemName: "app").font(.system(size: 36)).frame(width: 48, height: 48)
+        let isSelected = model.selectedID == entry.id
+        return VStack(spacing: 8) {
+            ZStack(alignment: .topTrailing) {
+                Group {
+                    if let icon = entry.icon {
+                        Image(nsImage: icon).resizable()
+                    } else {
+                        Image(systemName: "app").resizable().scaledToFit().padding(8)
+                    }
+                }
+                .frame(width: 56, height: 56)
+                if let number = model.number(of: entry.id) {
+                    Text("\(number)").font(.caption2.weight(.semibold)).monospacedDigit()
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(.thinMaterial, in: Capsule())
+                        .offset(x: 8, y: -4)
+                }
             }
-            Text(entry.appName).font(.callout).lineLimit(1)
-            Text(entry.title).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            Text(entry.appName).font(.callout.weight(.medium)).lineLimit(1)
+            Text(entry.title.isEmpty ? " " : entry.title).font(.caption).foregroundStyle(.secondary).lineLimit(1)
         }
-        .frame(width: 130)
-        .padding(10)
-        .background(isSelected ? Color.accentColor.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(isSelected ? Color.accentColor : .clear, lineWidth: 2))
+        .frame(width: 128)
+        .padding(.vertical, 12).padding(.horizontal, 8)
+        .background {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.2))
+                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Color.accentColor, lineWidth: 2))
+                    .matchedGeometryEffect(id: "selection", in: selection)
+            }
+        }
+        .scaleEffect(isSelected && !reduceMotion ? 1.04 : 1)
         .contentShape(Rectangle())
         .onTapGesture { onActivate(entry.id) }
+        .onHover { if $0 { model.select(entry.id) } }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(entry.appName) \(entry.title)")
         .accessibilityAddTraits(isSelected ? .isSelected : [])

@@ -63,6 +63,7 @@ struct MenuBarContent: View {
         Button("Arrange Windows Now") { model.coordinator.arrangeNow() }
         Button("Restore Previous Arrangement") { model.coordinator.restorePreviousArrangement() }
             .disabled(!ui.canRestorePreviousArrangement)
+        Button("Command Palette…") { model.showCommandPalette() }
         Button("Window Switcher…") { model.showSwitcher() }
         Toggle(
             "Float Active Window",

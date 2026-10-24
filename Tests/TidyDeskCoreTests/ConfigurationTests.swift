@@ -183,7 +183,7 @@ struct ShortcutTests {
 
     @Test func displayStringUsesSymbols() {
         #expect(ShortcutAction.swapPrevious.defaultShortcut.display == "⌃⌥←")
-        #expect(ShortcutAction.moveToPreviousDisplay.defaultShortcut.display == "⌃⌥⇧D")
+        #expect(ShortcutAction.moveToPreviousDisplay.defaultShortcut.display == "⌃⌥[")
     }
 
     @Test func everyActionHasADistinctDefault() {
