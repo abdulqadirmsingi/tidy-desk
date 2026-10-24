@@ -32,7 +32,7 @@ UI state (`TilingUIState`, `AppModel`) is separate from runtime window state ins
 
 ## Window discovery flow
 
-`WindowDiscoveryService.discover` lists regular, non-hidden apps (excluding itself), reads each app's `AXWindows`, and keeps a registry mapping `AXUIElement` → `WindowID` using `CFEqual` (no private window-number API). A window is eligible if it is an `AXWindow` / `AXStandardWindow`, not minimized, full-screen or modal, has settable position and size, belongs to a non-excluded app, and has a usable frame. Ineligible but existing windows (minimized, hidden app, other Space) are reported as *alive* so their order slot is retained; dead elements are pruned by probing. Every `AXElement` has a 0.5 s messaging timeout so a hung app cannot block the main thread for long.
+`WindowDiscoveryService.discover` lists regular, non-hidden apps (excluding itself), reads each app's `AXWindows`, and keeps a registry mapping `AXUIElement` → `WindowID` using `CFEqual` (no private window-number API). A window is eligible if it is an `AXWindow` / `AXStandardWindow`, not minimized, full-screen or modal, has settable position and size, belongs to a non-excluded app, and has a usable frame. Ineligible but existing windows (minimized, hidden app, other Space) are reported as *alive* so their order slot is retained; dead elements are pruned by probing. Every `AXElement` (app, window, and observer-delivered) gets a 0.5 s messaging timeout in its initializer, because the timeout is per element. If a window read times out, the rest of that app's windows are skipped for the pass and their order slots are kept.
 
 ## Event handling flow
 
@@ -67,7 +67,11 @@ Layouts are described as **columns of stacked tiles** in a landscape frame:
 
 ## Persistence
 
-`config.json` in `~/Library/Application Support/<AppName>/`, written atomically, debounced 0.4 s, flushed on quit. Fields decode with defaults, so older files load after upgrades. `ConfigurationMigration` has an (currently empty) step list keyed by schema version; newer-than-supported files are never overwritten; unreadable files are moved aside as `config.json.corrupt-<timestamp>`. Nothing about windows (titles, references, frames) is stored — only bundle identifiers of excluded apps and learned minimum sizes.
+`config.json` in `~/Library/Application Support/<AppName>/`, written atomically, debounced 0.4 s, flushed on quit. Fields decode with defaults, so older files load after upgrades. `ConfigurationMigration` has an (currently empty) step list keyed by schema version; newer-than-supported files are never overwritten or deleted (`save` throws, the UI says changes won't be saved) unless the user explicitly resets, in which case the file is first moved aside as `config.json.newer-<ms>`; unreadable or invalid files (including ones that exist but cannot be read) are moved aside under a unique `config.json.corrupt-<ms>` name, the newest 5 are kept, and the UI message says whether the backup actually succeeded. Nothing about windows (titles, references, frames) is stored — only bundle identifiers of excluded apps and learned minimum sizes.
+
+## Pause conditions
+
+`TilingStatus.resolve` (Core, tested) decides whether windows may be touched, in priority order: no permission → asleep/locked → Stage Manager on → user pause / onboarding incomplete. Stage Manager is read from the `com.apple.WindowManager` `GloballyEnabled` preference. There is no change notification, so it is re-checked on reconciles and on every focus change; tiling resumes by itself once it is off. While paused for it, a notice explains why.
 
 ## Permission handling
 

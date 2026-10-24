@@ -62,6 +62,19 @@ struct AppIntegrationTests {
         #expect(ShortcutMap().conflicts.isEmpty)
     }
 
+    @Test func discoveryReturnsPromptlyAndSafelyWithoutPermission() throws {
+        try #require(!AXIsProcessTrusted(), "Only meaningful when Accessibility is not granted")
+        let started = Date()
+        let result = WindowDiscoveryService().discover(excludedBundleIDs: [])
+        #expect(result.eligible.isEmpty)
+        #expect(Date().timeIntervalSince(started) < 5)
+    }
+
+    @Test func wrappedElementsAreMessagingTimeoutBounded() {
+        // The timeout has no public getter, so this guards the constant that every wrapper applies.
+        #expect(AXElement.messagingTimeout > 0 && AXElement.messagingTimeout <= 1)
+    }
+
     @Test func loginItemServiceReportsAState() {
         _ = LoginItemService().state
     }
@@ -88,5 +101,30 @@ struct AccessibilityIntegrationTests {
         let target = CGRect(x: 120, y: 160, width: 700, height: 450)
         let actual = try #require(try? WindowPlacementService().place(element, to: target).get())
         #expect(actual.isApproximatelyEqual(to: target, tolerance: 4))
+    }
+}
+
+@Suite("Newer config protection (app)", .serialized)
+@MainActor
+struct NewerConfigAppTests {
+    @Test func settingsChangesDoNotClobberANewerFileAndResetBacksItUp() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("TidyDeskNewer-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("config.json")
+        let future = Data(#"{"schemaVersion":99}"#.utf8)
+        try future.write(to: url)
+
+        let store = SettingsStore(store: ConfigurationStore(fileURL: url))
+        #expect(store.loadProblem != nil)
+        store.update { $0.isTilingEnabled = false }
+        store.flush()
+        #expect(try Data(contentsOf: url) == future)
+        #expect(store.saveProblem?.contains("will not be saved") == true)
+
+        store.resetToDefaults()
+        #expect(store.saveProblem == nil)
+        let backups = try FileManager.default.contentsOfDirectory(atPath: dir.path).filter { $0.contains("newer-") }
+        #expect(backups.count == 1)
     }
 }
