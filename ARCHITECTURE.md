@@ -69,6 +69,10 @@ Layouts are described as **columns of stacked tiles** in a landscape frame:
 
 `config.json` in `~/Library/Application Support/<AppName>/`, written atomically, debounced 0.4 s, flushed on quit. Fields decode with defaults, so older files load after upgrades. `ConfigurationMigration` has an (currently empty) step list keyed by schema version; newer-than-supported files are never overwritten or deleted (`save` throws, the UI says changes won't be saved) unless the user explicitly resets, in which case the file is first moved aside as `config.json.newer-<ms>`; unreadable or invalid files (including ones that exist but cannot be read) are moved aside under a unique `config.json.corrupt-<ms>` name, the newest 5 are kept, and the UI message says whether the backup actually succeeded. Nothing about windows (titles, references, frames) is stored — only bundle identifiers of excluded apps and learned minimum sizes.
 
+## Onboarding
+
+`OnboardingFlow` (Core, tested) owns step order and skips the permission steps once access is granted; if access arrives while the user is on the grant page, the tour moves on by itself. The views (`Features/Onboarding`) only present it: a frosted window (`NSVisualEffectView` behind-window blur, transparent title bar), `glassPanel()`/`glassButton()` helpers that use Liquid Glass on macOS 26 and frosted material before it, and `TilingDemo`, which animates placeholder windows through the real `TilePlanner`. Reduce Motion stops the animations and slides, and Reduce Transparency replaces glass with plain backgrounds.
+
 ## Pause conditions
 
 `TilingStatus.resolve` (Core, tested) decides whether windows may be touched, in priority order: no permission → asleep/locked → Stage Manager on → user pause / onboarding incomplete. Stage Manager is read from the `com.apple.WindowManager` `GloballyEnabled` preference. There is no change notification, so it is re-checked on reconciles and on every focus change; tiling resumes by itself once it is off. While paused for it, a notice explains why.
