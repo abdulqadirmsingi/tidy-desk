@@ -18,7 +18,7 @@ Run: `swift test` or `scripts/test.sh`. No Accessibility permission needed. Resu
 | Constraint learning | learns on refusal, ignores accepted/implausible, never lowers a minimum |
 | Window order | first = primary, append new, removal keeps order, duplicate events, alive-but-unlisted slot kept, swap/move/promote, **display disconnect/reconnect restore**, windows closed while absent not restored |
 | Focus mode | enter/exit, invalidation rules |
-| Configuration | round trip, missing file, older/partial files, missing version, newer schema refused and untouched, corrupt file backed up, per-display override/reset, clamping, delete |
+| Configuration | round trip, missing file, older/partial files, missing version, newer schema refused and untouched, corrupt file backed up with original bytes, same-instant corruption never overwrites a backup, backups pruned, wrong-type/empty files, unreadable file set aside, honest messages, per-display override/reset, clamping, delete |
 | Shortcuts | defaults conflict-free and distinct, conflict detection, display strings |
 | Coordinates | AppKit ↔ AX flip |
 
