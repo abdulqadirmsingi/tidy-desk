@@ -8,6 +8,8 @@ enum TilingTuning {
     static let ownMoveSuppression: TimeInterval = 0.7
     static let maxPassesPerReconcile = 3
     static let cleanSpaceInset = CGSize(width: 0.08, height: 0.06)
+    /// A user resize smaller than this is a nudge, not a request to float the window.
+    static let floatOnResizeThreshold: CGFloat = 24
 }
 
 struct StackKey: Hashable {
@@ -54,6 +56,9 @@ final class TilingCoordinator {
     var lastActiveWindow: WindowID?
     var isAsleep = false
     var preFocusFrame: CGRect?
+    /// Bounds how long we keep retrying observer registration for apps that are not ready yet.
+    var observerRetry = RetrySchedule()
+    var observersPending = false
 
     private var reconcileTask: Task<Void, Never>?
 
@@ -173,6 +178,15 @@ final class TilingCoordinator {
         }
         syncUI()
         refreshOverlays()
+        retryObserversIfNeeded()
+    }
+
+    private func retryObserversIfNeeded() {
+        guard observersPending else {
+            observerRetry.reset()
+            return
+        }
+        if let delay = observerRetry.next() { scheduleReconcile(delay: .milliseconds(Int(delay * 1000))) }
     }
 
     /// One discover → plan → apply cycle. Returns true if a refusal taught us something and
@@ -188,7 +202,7 @@ final class TilingCoordinator {
         originalFrames = originalFrames.filter { found.alive.contains($0.key) }
         userFloating.formIntersection(found.alive)
         budget.retain(alive: found.alive)
-        monitor.sync(windows: found.eligible)
+        observersPending = monitor.sync(windows: found.eligible)
         if let focused = focus.focusedWindow, tracked[focused] == nil {
             focus.handle(.windowClosed(focused))
             cleanSpaceDisplay = nil

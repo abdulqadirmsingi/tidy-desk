@@ -77,6 +77,15 @@ final class AppModel {
         switcher.show(groups: groups) { [weak self] id in self?.coordinator.activate(id) }
     }
 
+    func showWindowExplanation() {
+        let alert = NSAlert()
+        alert.messageText = "Why isn’t this window tiled?"
+        alert.informativeText = coordinator.explainActiveWindow()
+        alert.addButton(withTitle: "OK")
+        NSApp.activate()
+        alert.runModal()
+    }
+
     func completeOnboarding() {
         settings.update { $0.hasCompletedOnboarding = true }
         presenter.close(.onboarding)
