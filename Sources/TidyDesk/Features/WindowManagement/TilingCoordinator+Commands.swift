@@ -34,9 +34,17 @@ extension TilingCoordinator {
 
     // MARK: Active window
 
+    /// The focused window of the frontmost app, even if it is not tileable.
+    private func focusedWindowElement() -> (app: NSRunningApplication, element: AXElement)? {
+        guard let app = NSWorkspace.shared.frontmostApplication, app.processIdentifier != ownPID,
+              let element = AXElement.application(pid: app.processIdentifier).element(kAXFocusedWindowAttribute)
+        else { return nil }
+        return (app, element)
+    }
+
     func updateActiveWindow() {
         guard let app = NSWorkspace.shared.frontmostApplication, app.processIdentifier != ownPID else { return }
-        let focused = AXElement.application(pid: app.processIdentifier).element(kAXFocusedWindowAttribute)
+        let focused = focusedWindowElement()?.element
         lastActiveWindow = focused.flatMap { discovery.window(for: $0) }.flatMap { tracked[$0] != nil ? $0 : nil }
     }
 
@@ -49,6 +57,13 @@ extension TilingCoordinator {
 
     func focusChanged() {
         refreshStatusIfChanged()
+        // A focused window we have never seen is a new window whose creation event we missed
+        // (for example an app that was still starting). Pull it into the layout.
+        if let focused = focusedWindowElement(), discovery.window(for: focused.element) == nil,
+           focused.element.string(kAXRoleAttribute) == kAXWindowRole
+        {
+            scheduleReconcile()
+        }
         updateActiveWindow()
         if let id = lastActiveWindow, focus.handle(.anotherWindowActivated(id)) {
             exitPresentationModes()
@@ -68,6 +83,26 @@ extension TilingCoordinator {
             }
         }
         return nil
+    }
+
+    /// Plain-language reason the focused window is or isn't tiled. Contains no window title.
+    func explainActiveWindow() -> String {
+        guard let focused = focusedWindowElement() else {
+            return "Click a window first, then ask again."
+        }
+        let appName = focused.app.localizedName ?? "This app"
+        let bundleID = focused.app.bundleIdentifier
+        let id = discovery.window(for: focused.element)
+        var role: PlacementRole?
+        for plan in lastPlans.values {
+            if let id, let item = plan.placements.first(where: { $0.id == id }) { role = item.role }
+        }
+        return WindowExplanation.describe(
+            appName: appName, ineligibility: WindowEligibility.evaluate(discovery.traits(of: focused.element)),
+            isExcluded: bundleID.map { settings.configuration.excludedBundleIDs.contains($0) } ?? false,
+            isUserFloating: id.map { userFloating.contains($0) } ?? false,
+            isStubborn: id.map { budget.isStubborn($0) } ?? false,
+            learnedMinimum: bundleID.flatMap { settings.configuration.learnedMinimums[$0]?.size }, role: role)
     }
 
     // MARK: Order and displays

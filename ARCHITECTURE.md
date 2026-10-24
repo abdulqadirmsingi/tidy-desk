@@ -34,6 +34,10 @@ UI state (`TilingUIState`, `AppModel`) is separate from runtime window state ins
 
 `WindowDiscoveryService.discover` lists regular, non-hidden apps (excluding itself), reads each app's `AXWindows`, and keeps a registry mapping `AXUIElement` → `WindowID` using `CFEqual` (no private window-number API). A window is eligible if it is an `AXWindow` / `AXStandardWindow`, not minimized, full-screen or modal, has settable position and size, belongs to a non-excluded app, and has a usable frame. Ineligible but existing windows (minimized, hidden app, other Space) are reported as *alive* so their order slot is retained; dead elements are pruned by probing. Every `AXElement` (app, window, and observer-delivered) gets a 0.5 s messaging timeout in its initializer, because the timeout is per element. If a window read times out, the rest of that app's windows are skipped for the pass and their order slots are kept.
 
+## Catching new windows
+
+Observer registration can fail while an app is still starting. `WindowLifecycleMonitor.sync` keeps such registrations pending and retries them on later passes; the coordinator schedules those passes on a finite `RetrySchedule` (0.5, 1, 2, 4, 8 s), then stops. Independently, a focus change onto a window the registry has never seen triggers a reconcile, so a missed creation event is healed as soon as the window is used. `WindowEligibility` (Core) is the single definition of which windows may be tiled, and *Explain Active Window* reports its verdict in plain language without titles.
+
 ## Event handling flow
 
 `WindowLifecycleMonitor` converts `AXObserver` callbacks (window created, destroyed, moved, resized, miniaturized, focus) and workspace/system notifications (launch, terminate, hide, unhide, activate, Space change, sleep, wake, screen lock, display parameters) into `WindowEvent`s. Observers are added per app on demand and removed on termination or `stop()`. Nothing polls.
