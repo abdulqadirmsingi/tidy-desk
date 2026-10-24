@@ -20,6 +20,9 @@ Run: `swift test` or `scripts/test.sh`. No Accessibility permission needed. Resu
 | Placement budget | refusal cap, one-time stubborn signal, success forgives, per-window, self-moving windows, slow corrections ignored, reset/retain, bounded loop |
 | Tiling status | priority of permission, sleep, Stage Manager, user pause; resumes when Stage Manager is off |
 | Onboarding flow | step order, permission steps skipped when granted, no stranding when access arrives mid-tour, back/forward direction, progress |
+| Command search | empty query, ranking tiers, keywords, all-words rule, case/spacing, letters-in-order, stable ties, every action findable by its title |
+| Default shortcuts | unique, all Control+Option, readable key names, palette bound |
+| Switcher navigation | reading-order wrap, up/down between displays, single display, empty groups, number keys |
 | Eligibility / explanation / retry schedule | every disqualifier, missing attributes tolerated, explanations distinct and title-free, finite growing retry delays |
 | Inexpressible resizes | shrinking a single window or a full-height column tile changes no weights (the case that now floats the window) |
 | Focus mode | enter/exit, invalidation rules |
@@ -67,7 +70,9 @@ Mark with date and macOS version when done.
 | 11 | Focus mode enter/exit; exits on layout change and when another window is activated | ☐ |
 | 12 | No Peek dims only windows beneath the active one; disabling leaves no overlay | ☐ |
 | 13 | Clean Space; exits on lock/sleep/display removal | ☐ |
-| 14 | Window switcher: grouped by display, arrows/Tab/Return/Esc | ☐ |
+| 14 | Window switcher: grouped by display, arrows/Tab/1–9/Return/Esc, glass look, selection animation (**not yet verified**) | ☐ |
+| 14a | Command palette (⌃⌥K): opens over the active app without stealing focus, filtering, Return runs the command on the previously active window (**not yet verified**) | ☐ |
+| 14b | New default shortcuts register without conflicts on a Mac with several input sources (⌃⌥K, ⌃⌥↩ …) (**not yet verified**) | ☐ |
 | 15 | Laptop only; laptop + external; per-display settings differ | ☐ |
 | 16 | Unplug/replug external → windows recovered on screen, layout restored on reconnect | ☐ |
 | 17 | Stage Manager on (key `com.apple.WindowManager GloballyEnabled` exists and read `0` on the dev Mac; flipping not yet observed) → tiling pauses with explanation; off → resumes | ☐ |
