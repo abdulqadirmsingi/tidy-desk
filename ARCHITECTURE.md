@@ -69,6 +69,10 @@ Layouts are described as **columns of stacked tiles** in a landscape frame:
 
 `config.json` in `~/Library/Application Support/<AppName>/`, written atomically, debounced 0.4 s, flushed on quit. Fields decode with defaults, so older files load after upgrades. `ConfigurationMigration` has an (currently empty) step list keyed by schema version; newer-than-supported files are never overwritten; unreadable files are moved aside as `config.json.corrupt-<timestamp>`. Nothing about windows (titles, references, frames) is stored — only bundle identifiers of excluded apps and learned minimum sizes.
 
+## Pause conditions
+
+`TilingStatus.resolve` (Core, tested) decides whether windows may be touched, in priority order: no permission → asleep/locked → Stage Manager on → user pause / onboarding incomplete. Stage Manager is read from the `com.apple.WindowManager` `GloballyEnabled` preference. There is no change notification, so it is re-checked on reconciles and on every focus change; tiling resumes by itself once it is off. While paused for it, a notice explains why.
+
 ## Permission handling
 
 `AccessibilityPermission` reads `AXIsProcessTrusted`, prompts once on request, deep-links to Privacy & Security, and refreshes on the system's Accessibility notification and on app activation. On revocation the coordinator removes overlays and reports `needsPermission`; no AX call is made until it returns.
