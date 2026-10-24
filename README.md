@@ -39,7 +39,7 @@ Ad-hoc signed builds get a new identity on every rebuild, so macOS may ask you t
 
 ## Default shortcuts (Control + Option)
 
-`A` arrange now · `T` pause/resume · `L` Grid/Columns · `Z` restore previous · `←/→` swap with previous/next tile · `D` / `⇧D` move to next/previous display · `F` Focus · `N` No Peek · `C` Clean Space · `Tab` window switcher · `=` / `-` grow/shrink tile · `0` reset sizes · `↑` cycle stack · `G` float/tile active window. All are configurable in Settings → Shortcuts.
+`A` arrange now · `T` pause/resume · `L` Grid/Columns · `Z` restore previous · `←/→` swap with previous/next tile · `D` / `⇧D` move to next/previous display · `F` Focus · `N` No Peek · `C` Clean Space · `Tab` window switcher · `=` / `-` grow/shrink tile · `0` reset sizes · `↑` cycle stack · `G` float/tile active window (also in the menu bar as *Float Active Window*). All are configurable in Settings → Shortcuts.
 
 ## Current limitations
 

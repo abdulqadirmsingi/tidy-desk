@@ -104,6 +104,49 @@ struct AccessibilityIntegrationTests {
     }
 }
 
+/// Exercises coordinator state without Accessibility by injecting a tracked window.
+@Suite("Float toggle", .serialized)
+@MainActor
+struct FloatToggleTests {
+    private func makeCoordinator() -> TilingCoordinator {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TidyDeskFloat-\(UUID().uuidString)/config.json")
+        let settings = SettingsStore(store: ConfigurationStore(fileURL: url))
+        return TilingCoordinator(settings: settings, permission: AccessibilityPermission())
+    }
+
+    private func inject(_ coordinator: TilingCoordinator) -> WindowID {
+        let id = WindowID()
+        coordinator.tracked[id] = TrackedWindow(
+            id: id, element: AXElement(raw: AXUIElementCreateSystemWide()), pid: 1, bundleID: nil,
+            appName: "Test", frame: CGRect(x: 0, y: 0, width: 400, height: 300))
+        coordinator.lastActiveWindow = id
+        return id
+    }
+
+    @Test func togglingFloatsAndTilesTheWindowAndUpdatesUIState() {
+        let coordinator = makeCoordinator()
+        let id = inject(coordinator)
+        coordinator.syncUI()
+        #expect(coordinator.ui.activeWindowFloating == false)
+
+        coordinator.toggleFloat(id)
+        #expect(coordinator.userFloating.contains(id))
+        #expect(coordinator.ui.activeWindowFloating == true)
+        #expect(coordinator.ui.floatingCount == 1)
+
+        coordinator.toggleFloat(id)
+        #expect(!coordinator.userFloating.contains(id))
+        #expect(coordinator.ui.activeWindowFloating == false)
+    }
+
+    @Test func noActiveWindowDisablesTheToggle() {
+        let coordinator = makeCoordinator()
+        coordinator.syncUI()
+        #expect(coordinator.ui.activeWindowFloating == nil)
+    }
+}
+
 @Suite("Newer config protection (app)", .serialized)
 @MainActor
 struct NewerConfigAppTests {

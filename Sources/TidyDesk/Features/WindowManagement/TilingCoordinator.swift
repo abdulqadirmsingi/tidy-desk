@@ -349,6 +349,7 @@ final class TilingCoordinator {
         ui.isCleanSpaceActive = cleanSpaceDisplay != nil
         ui.isNoPeekActive = noPeekActive
         ui.canRestorePreviousArrangement = !originalFrames.isEmpty
+        ui.activeWindowFloating = lastActiveWindow.flatMap { tracked[$0] != nil ? userFloating.contains($0) : nil }
     }
 
     func refreshOverlays() {
