@@ -179,3 +179,37 @@ struct StaleGrantTests {
         #expect(AccessibilityPermission.resetArguments(bundleID: "com.example.app") == ["reset", "Accessibility", "com.example.app"])
     }
 }
+
+@Suite("Suggestions (app)", .serialized)
+@MainActor
+struct SuggestionWiringTests {
+    private func makeCoordinator() -> TilingCoordinator {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TidyDeskSuggest-\(UUID().uuidString)/config.json")
+        return TilingCoordinator(
+            settings: SettingsStore(store: ConfigurationStore(fileURL: url)), permission: AccessibilityPermission())
+    }
+
+    @Test func coordinatorRaisesEachSuggestionOnceAndHonoursNotNow() {
+        let coordinator = makeCoordinator()
+        var raised: [SuggestionKind] = []
+        coordinator.onSuggestion = { raised.append($0) }
+        let context = SuggestionPolicy.Context(status: .pausedByUser, eligibleWindowCount: 3, newWindowAppeared: true)
+
+        coordinator.suggest(context)
+        coordinator.suggest(context)
+        #expect(raised == [.tidyUp(windowCount: 3)])
+
+        coordinator.suggestionDismissed(.tidyUp(windowCount: 3))
+        coordinator.suggest(context)
+        #expect(raised.count == 1)
+    }
+
+    @Test func nothingIsSuggestedWhileTilingIsActive() {
+        let coordinator = makeCoordinator()
+        var raised = 0
+        coordinator.onSuggestion = { _ in raised += 1 }
+        coordinator.suggest(.init(status: .active, eligibleWindowCount: 4, newWindowAppeared: true))
+        #expect(raised == 0)
+    }
+}
