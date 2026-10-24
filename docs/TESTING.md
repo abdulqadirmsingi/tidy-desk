@@ -26,6 +26,7 @@ Run: `swift test` or `scripts/test.sh`. No Accessibility permission needed. Resu
 | Eligibility / explanation / retry schedule | every disqualifier, missing attributes tolerated, explanations distinct and title-free, finite growing retry delays |
 | Inexpressible resizes | shrinking a single window or a full-height column tile changes no weights (the case that now floats the window) |
 | Suggestion policy | tidy-up needs a new window and ≥2 windows while paused, silent when active/Stage Manager/asleep, cooldowns, "Not Now" silence, access reminder is rare and silenced separately; coordinator raises each once |
+| Menu bar symbol / Dock setting | symbol per status, attention states never look active, `showInDock` defaults off and survives older files |
 | Focus mode | enter/exit, invalidation rules |
 | Configuration | round trip, missing file, older/partial files, missing version, newer schema refused and untouched, corrupt file backed up with original bytes, same-instant corruption never overwrites a backup, backups pruned, wrong-type/empty files, unreadable file set aside, honest messages, per-display override/reset, clamping, delete |
 | Newer-version protection | save/delete refuse a newer file, load→edit→save cycle keeps it, explicit reset backs it up first, current/unversioned files stay writable; same flow through `SettingsStore` |
@@ -55,6 +56,8 @@ Mark with date and macOS version when done.
 | # | Scenario | Result |
 |---|---|---|
 | 1a | Onboarding looks right: frosted window, glass panels/buttons, animated demo, slide transitions; Reduce Motion and Reduce Transparency respected (**not yet verified**; layout of every step was checked offscreen only, with glass/blur/animation not rendered) |
+| 1b | Menu panel: click the icon (opens under it, keeps the previous app active), switch on/off, layout controls, *Tile <app>* and *Float this window* act on the app you were in, actions close the panel first, clicking the icon again closes it, right-click menu, Escape/outside click closes (**not yet verified**; status item existence/frame/icon/tooltip *were* confirmed in a throwaway test) |
+| 1c | *Also show in the Dock* adds/removes the Dock icon live; clicking it, or relaunching from Spotlight, opens Settings (**not yet verified**) |
 | 1 | Launch: menu bar icon appears, no Dock icon, welcome tour opens on first run | ☐ |
 | 2b | With tiling off, open a new window: a toast appears under the menu bar (below the notch) offering to tidy up; each button works; it never steals focus and doesn't reappear immediately (**not yet verified**) |
 | 2a | Rebuild with a different signature while an old entry is switched on: the tour shows the reset help after ~6 s, *Reset Permission and Try Again* clears it and re-grant works (**reported by the owner on first run; fix not yet verified**) |

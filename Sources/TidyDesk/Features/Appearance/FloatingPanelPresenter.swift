@@ -14,12 +14,16 @@ final class FloatingPanelPresenter {
         case center
         /// Near the top, where search launchers conventionally appear.
         case upper
+        /// Just below a status item, given by its rectangle in screen coordinates.
+        case below(CGRect)
     }
 
     private var panel: KeyablePanel?
     private var resignToken: NSObjectProtocol?
 
     var isPresented: Bool { panel != nil }
+    /// Called whenever a presented panel goes away (focus loss, action, or explicit dismiss).
+    var onDismiss: (() -> Void)?
 
     func present<Content: View>(_ content: Content, size: NSSize? = nil, anchor: Anchor) {
         dismiss()
@@ -36,8 +40,16 @@ final class FloatingPanelPresenter {
         panel.level = .modalPanel
         panel.hasShadow = true
         panel.isReleasedWhenClosed = false
-        if let screen = Self.screenUnderMouse() {
-            let y = anchor == .center ? screen.frame.midY - panelSize.height / 2 : screen.frame.maxY - screen.frame.height * 0.26 - panelSize.height
+        if case let .below(anchorRect) = anchor {
+            let screen = NSScreen.screens.first { $0.frame.intersects(anchorRect) } ?? NSScreen.main
+            let visible = screen?.visibleFrame ?? anchorRect
+            let x = min(max(anchorRect.midX - panelSize.width / 2, visible.minX + 8), visible.maxX - panelSize.width - 8)
+            panel.setFrameOrigin(NSPoint(x: x, y: anchorRect.minY - panelSize.height - 6))
+        } else if let screen = Self.screenUnderMouse() {
+            let y: CGFloat = switch anchor {
+            case .center: screen.frame.midY - panelSize.height / 2
+            default: screen.frame.maxY - screen.frame.height * 0.26 - panelSize.height
+            }
             panel.setFrameOrigin(NSPoint(x: screen.frame.midX - panelSize.width / 2, y: y))
         }
         panel.makeKeyAndOrderFront(nil)
@@ -52,9 +64,11 @@ final class FloatingPanelPresenter {
     func dismiss() {
         if let resignToken { NotificationCenter.default.removeObserver(resignToken) }
         resignToken = nil
-        panel?.orderOut(nil)
-        panel?.close()
-        panel = nil
+        guard let panel else { return }
+        panel.orderOut(nil)
+        panel.close()
+        self.panel = nil
+        onDismiss?()
     }
 
     private static func screenUnderMouse() -> NSScreen? {

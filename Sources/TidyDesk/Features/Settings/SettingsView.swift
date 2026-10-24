@@ -47,6 +47,11 @@ private struct GeneralSettings: View {
                 }
                 if let error = model.loginItemError { Text(error).font(.callout).foregroundStyle(.red) }
             }
+            Section("Appearance in macOS") {
+                Toggle("Also show in the Dock", isOn: settings.binding(\.showInDock))
+                Text("\(Branding.name) always lives in the menu bar. Turn this on if you find the icon hard to spot; clicking the Dock icon opens Settings.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
             Section("Arrangement") {
                 Button("Restore Previous Arrangement") { model.coordinator.restorePreviousArrangement() }
                     .disabled(!model.ui.canRestorePreviousArrangement)
