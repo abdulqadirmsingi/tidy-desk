@@ -30,6 +30,8 @@ Permission service matches system state; display geometry consistent; `SettingsS
 
 `TIDYDESK_AX_TESTS=1 swift test` — moves/resizes a window created by the test through `AXElement`/`WindowPlacementService`. **Skipped in the last run** because the host shell isn't trusted for Accessibility. It has not passed yet.
 
+The messaging timeout itself has no public getter, so only its configured value and the "discovery returns promptly without permission" behavior are tested. A genuinely hung app has **not** been simulated.
+
 ## Not covered by automated tests
 
 The coordinator, observers, overlays, SwiftUI views, menu bar, and any behavior against third-party apps. These need Accessibility and a display, and automated tests must not rearrange a developer's desktop.

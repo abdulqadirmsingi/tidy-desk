@@ -62,6 +62,19 @@ struct AppIntegrationTests {
         #expect(ShortcutMap().conflicts.isEmpty)
     }
 
+    @Test func discoveryReturnsPromptlyAndSafelyWithoutPermission() throws {
+        try #require(!AXIsProcessTrusted(), "Only meaningful when Accessibility is not granted")
+        let started = Date()
+        let result = WindowDiscoveryService().discover(excludedBundleIDs: [])
+        #expect(result.eligible.isEmpty)
+        #expect(Date().timeIntervalSince(started) < 5)
+    }
+
+    @Test func wrappedElementsAreMessagingTimeoutBounded() {
+        // The timeout has no public getter, so this guards the constant that every wrapper applies.
+        #expect(AXElement.messagingTimeout > 0 && AXElement.messagingTimeout <= 1)
+    }
+
     @Test func loginItemServiceReportsAState() {
         _ = LoginItemService().state
     }
