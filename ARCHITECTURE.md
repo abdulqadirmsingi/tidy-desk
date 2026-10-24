@@ -32,7 +32,7 @@ UI state (`TilingUIState`, `AppModel`) is separate from runtime window state ins
 
 ## Window discovery flow
 
-`WindowDiscoveryService.discover` lists regular, non-hidden apps (excluding itself), reads each app's `AXWindows`, and keeps a registry mapping `AXUIElement` → `WindowID` using `CFEqual` (no private window-number API). A window is eligible if it is an `AXWindow` / `AXStandardWindow`, not minimized, full-screen or modal, has settable position and size, belongs to a non-excluded app, and has a usable frame. Ineligible but existing windows (minimized, hidden app, other Space) are reported as *alive* so their order slot is retained; dead elements are pruned by probing. Every `AXElement` has a 0.5 s messaging timeout so a hung app cannot block the main thread for long.
+`WindowDiscoveryService.discover` lists regular, non-hidden apps (excluding itself), reads each app's `AXWindows`, and keeps a registry mapping `AXUIElement` → `WindowID` using `CFEqual` (no private window-number API). A window is eligible if it is an `AXWindow` / `AXStandardWindow`, not minimized, full-screen or modal, has settable position and size, belongs to a non-excluded app, and has a usable frame. Ineligible but existing windows (minimized, hidden app, other Space) are reported as *alive* so their order slot is retained; dead elements are pruned by probing. Every `AXElement` (app, window, and observer-delivered) gets a 0.5 s messaging timeout in its initializer, because the timeout is per element. If a window read times out, the rest of that app's windows are skipped for the pass and their order slots are kept.
 
 ## Event handling flow
 
