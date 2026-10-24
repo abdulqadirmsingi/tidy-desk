@@ -50,6 +50,12 @@ final class WindowDiscoveryService {
         for app in apps where !app.isHidden {
             let appElement = AXElement.application(pid: app.processIdentifier)
             for element in appElement.elements(kAXWindowsAttribute) {
+                // One timed-out read means the app is hung; skip its remaining windows this pass
+                // instead of paying the timeout for every attribute of every window.
+                if element.probe() == .cannotComplete {
+                    Log.lifecycle.debug("App not responding; skipped for this pass")
+                    break
+                }
                 let id = identity(for: element, pid: app.processIdentifier)
                 seenThisPass.insert(id)
                 result.alive.insert(id)

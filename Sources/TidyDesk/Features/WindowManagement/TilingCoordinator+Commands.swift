@@ -50,6 +50,7 @@ extension TilingCoordinator {
     }
 
     func focusChanged() {
+        refreshStatusIfChanged()
         updateActiveWindow()
         if let id = lastActiveWindow, focus.handle(.anotherWindowActivated(id)) {
             exitPresentationModes()

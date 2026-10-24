@@ -35,6 +35,7 @@ final class TilingCoordinator {
     let monitor = WindowLifecycleMonitor()
     let overlays = OverlayController()
     let ownPID = ProcessInfo.processInfo.processIdentifier
+    static let stageManagerNotice = "Stage Manager is on, so tiling is paused. Turn it off to resume."
 
     var order = WindowOrder()
     var tracked: [WindowID: TrackedWindow] = [:]
@@ -133,11 +134,15 @@ final class TilingCoordinator {
     }
 
     func currentStatus() -> TilingStatus {
-        if !permission.isGranted { return .needsPermission }
-        if isAsleep { return .asleep }
-        if StageManagerDetector.isEnabled { return .stageManagerOn }
         let config = settings.configuration
-        return config.isTilingEnabled && config.hasCompletedOnboarding ? .active : .pausedByUser
+        return TilingStatus.resolve(
+            permissionGranted: permission.isGranted, isAsleep: isAsleep, stageManagerOn: StageManagerDetector.isEnabled,
+            tilingEnabled: config.isTilingEnabled, onboardingComplete: config.hasCompletedOnboarding)
+    }
+
+    /// Stage Manager has no change notification, so cheap events (focus changes) re-check it.
+    func refreshStatusIfChanged() {
+        if currentStatus() != ui.status { reconcile() }
     }
 
     // MARK: Reconciliation
@@ -148,6 +153,11 @@ final class TilingCoordinator {
         reconcileTask?.cancel()
         let status = currentStatus()
         ui.status = status
+        if status == .stageManagerOn {
+            ui.notice = Self.stageManagerNotice
+        } else if ui.notice == Self.stageManagerNotice {
+            ui.notice = nil
+        }
         switch status {
         case .active: break
         case .pausedByUser where manual: break
@@ -372,7 +382,9 @@ final class TilingCoordinator {
 
 enum StageManagerDetector {
     /// Read-only check of the Window Manager preference; there is no public query API.
+    /// If the key is missing or unreadable, tiling is not paused.
     static var isEnabled: Bool {
-        UserDefaults(suiteName: "com.apple.WindowManager")?.bool(forKey: "GloballyEnabled") ?? false
+        let value = CFPreferencesCopyAppValue("GloballyEnabled" as CFString, "com.apple.WindowManager" as CFString)
+        return (value as? Bool) ?? false
     }
 }

@@ -33,15 +33,19 @@ enum AXFailure: Error, LocalizedError, Equatable {
 struct AXElement: Equatable {
     let raw: AXUIElement
 
+    /// Seconds before an unresponsive app stops blocking us. The timeout is per element, so it
+    /// is applied here for every element we wrap, not just the application element.
+    static let messagingTimeout: Float = 0.5
+
+    init(raw: AXUIElement) {
+        AXUIElementSetMessagingTimeout(raw, Self.messagingTimeout)
+        self.raw = raw
+    }
+
     static func == (lhs: AXElement, rhs: AXElement) -> Bool { CFEqual(lhs.raw, rhs.raw) }
 
-    /// Seconds before an unresponsive app stops blocking us.
-    private static let messagingTimeout: Float = 0.5
-
     static func application(pid: pid_t) -> AXElement {
-        let element = AXUIElementCreateApplication(pid)
-        AXUIElementSetMessagingTimeout(element, messagingTimeout)
-        return AXElement(raw: element)
+        AXElement(raw: AXUIElementCreateApplication(pid))
     }
 
     var pid: pid_t? {
@@ -55,7 +59,7 @@ struct AXElement: Equatable {
         return result
     }
 
-    /// Distinguishes "attribute missing" from "element is gone".
+    /// Distinguishes "attribute missing" from "element is gone" or "app not responding".
     func probe() -> AXError {
         var result: CFTypeRef?
         return AXUIElementCopyAttributeValue(raw, kAXRoleAttribute as CFString, &result)

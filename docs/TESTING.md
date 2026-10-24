@@ -17,8 +17,10 @@ Run: `swift test` or `scripts/test.sh`. No Accessibility permission needed. Resu
 | Ratio inference | resize feeds back into layout (primary and secondary), unchanged frame, clamping |
 | Constraint learning | learns on refusal, ignores accepted/implausible, never lowers a minimum |
 | Window order | first = primary, append new, removal keeps order, duplicate events, alive-but-unlisted slot kept, swap/move/promote, **display disconnect/reconnect restore**, windows closed while absent not restored |
+| Tiling status | priority of permission, sleep, Stage Manager, user pause; resumes when Stage Manager is off |
 | Focus mode | enter/exit, invalidation rules |
-| Configuration | round trip, missing file, older/partial files, missing version, newer schema refused and untouched, corrupt file backed up, per-display override/reset, clamping, delete |
+| Configuration | round trip, missing file, older/partial files, missing version, newer schema refused and untouched, corrupt file backed up with original bytes, same-instant corruption never overwrites a backup, backups pruned, wrong-type/empty files, unreadable file set aside, honest messages, per-display override/reset, clamping, delete |
+| Newer-version protection | save/delete refuse a newer file, load→edit→save cycle keeps it, explicit reset backs it up first, current/unversioned files stay writable; same flow through `SettingsStore` |
 | Shortcuts | defaults conflict-free and distinct, conflict detection, display strings |
 | Coordinates | AppKit ↔ AX flip |
 
@@ -31,6 +33,8 @@ Float toggle (app target): state and UI flags are tested with an injected window
 ### Opt-in Accessibility test
 
 `TIDYDESK_AX_TESTS=1 swift test` — moves/resizes a window created by the test through `AXElement`/`WindowPlacementService`. **Skipped in the last run** because the host shell isn't trusted for Accessibility. It has not passed yet.
+
+The messaging timeout itself has no public getter, so only its configured value and the "discovery returns promptly without permission" behavior are tested. A genuinely hung app has **not** been simulated.
 
 ## Not covered by automated tests
 
@@ -58,7 +62,7 @@ Mark with date and macOS version when done.
 | 14 | Window switcher: grouped by display, arrows/Tab/Return/Esc | ☐ |
 | 15 | Laptop only; laptop + external; per-display settings differ | ☐ |
 | 16 | Unplug/replug external → windows recovered on screen, layout restored on reconnect | ☐ |
-| 17 | Stage Manager on → tiling pauses with explanation; off → resumes | ☐ |
+| 17 | Stage Manager on (key `com.apple.WindowManager GloballyEnabled` exists and read `0` on the dev Mac; flipping not yet observed) → tiling pauses with explanation; off → resumes | ☐ |
 | 18 | Multiple Spaces: switching Spaces doesn't scramble layouts (best effort) | ☐ |
 | 19 | Sleep/wake and lock/unlock | ☐ |
 | 20 | Quit and relaunch: settings persist, no unexpected rearrangement before onboarding completes | ☐ |

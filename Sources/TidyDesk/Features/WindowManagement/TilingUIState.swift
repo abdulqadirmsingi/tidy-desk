@@ -1,24 +1,6 @@
 import Observation
 import TidyDeskCore
 
-enum TilingStatus: Equatable {
-    case active
-    case pausedByUser
-    case needsPermission
-    case stageManagerOn
-    case asleep
-
-    var summary: String {
-        switch self {
-        case .active: "Tiling is on"
-        case .pausedByUser: "Tiling is paused"
-        case .needsPermission: "Accessibility access needed"
-        case .stageManagerOn: "Paused: Stage Manager is on"
-        case .asleep: "Waiting for the screen to unlock"
-        }
-    }
-}
-
 /// What the interface shows. Written only by `TilingCoordinator`; contains no window titles.
 @MainActor
 @Observable
