@@ -23,6 +23,8 @@ Run: `swift test` or `scripts/test.sh`. No Accessibility permission needed. Resu
 | Command search | empty query, ranking tiers, keywords, all-words rule, case/spacing, letters-in-order, stable ties, every action findable by its title |
 | Default shortcuts | unique, all Control+Option, readable key names, palette bound |
 | Switcher navigation | reading-order wrap, up/down between displays, single display, empty groups, number keys |
+| Eligibility / explanation / retry schedule | every disqualifier, missing attributes tolerated, explanations distinct and title-free, finite growing retry delays |
+| Inexpressible resizes | shrinking a single window or a full-height column tile changes no weights (the case that now floats the window) |
 | Focus mode | enter/exit, invalidation rules |
 | Configuration | round trip, missing file, older/partial files, missing version, newer schema refused and untouched, corrupt file backed up with original bytes, same-instant corruption never overwrites a backup, backups pruned, wrong-type/empty files, unreadable file set aside, honest messages, per-display override/reset, clamping, delete |
 | Newer-version protection | save/delete refuse a newer file, load→edit→save cycle keeps it, explicit reset backs it up first, current/unversioned files stay writable; same flow through `SettingsStore` |
@@ -55,6 +57,9 @@ Mark with date and macOS version when done.
 | 1 | Launch: menu bar icon appears, no Dock icon, welcome tour opens on first run | ☐ |
 | 2 | Permission: grant via tour; icon changes from warning; revoke while running → tiling stops, no prompts loop | ☐ |
 | 3 | Safari, Finder, Terminal, Xcode, Cursor/another editor tile in Grid and Columns (1–4) | ☐ |
+| 4a | Open an app that is slow to start (e.g. Prime Video): it joins the layout within a few seconds, without clicking elsewhere (**not yet verified**) |
+| 4b | *Explain Active Window* on Prime Video states the real reason (**not yet verified**) |
+| 4c | Shrink a single window by dragging its edge: it floats with a notice instead of snapping back (**not yet verified**) |
 | 4 | Open/close/minimize/restore/hide/unhide windows → layout updates once, no flicker | ☐ |
 | 5 | Non-resizable window (e.g. System Settings, Calculator) is left floating | ☐ |
 | 6 | App with large minimum size → learned minimum appears in Settings → Apps; layout adapts or floats | ☐ |

@@ -92,6 +92,10 @@ final class AppModel {
                 item: CommandItem(id: "settings", title: "Open Settings", keywords: ["preferences", "options", "configure"]),
                 run: { [weak self] in self?.showSettings() }),
             PaletteCommand(
+                item: CommandItem(
+                    id: "explain", title: "Explain Active Window", keywords: ["why", "not tiled", "floating", "debug"]),
+                run: { [weak self] in self?.showWindowExplanation() }),
+            PaletteCommand(
                 item: CommandItem(id: "tour", title: "Show Welcome Tour", keywords: ["onboarding", "help", "intro"]),
                 run: { [weak self] in self?.showOnboarding() }),
         ]
@@ -106,6 +110,15 @@ final class AppModel {
                 },
                 onDismiss: { [weak self] in self?.palettePresenter.dismiss() }),
             size: NSSize(width: 560, height: 400), anchor: .upper)
+    }
+
+    func showWindowExplanation() {
+        let alert = NSAlert()
+        alert.messageText = "Why isn’t this window tiled?"
+        alert.informativeText = coordinator.explainActiveWindow()
+        alert.addButton(withTitle: "OK")
+        NSApp.activate()
+        alert.runModal()
     }
 
     func completeOnboarding() {

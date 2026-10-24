@@ -18,8 +18,14 @@ enum WindowEvent {
 final class WindowLifecycleMonitor {
     private final class AppWatch {
         let observer: AXObserver
+        let pid: pid_t
         var windows: [AXElement] = []
-        init(observer: AXObserver) { self.observer = observer }
+        /// App-level notifications that failed because the app was not ready; retried on `sync`.
+        var pendingApp: [String] = []
+        init(observer: AXObserver, pid: pid_t) {
+            self.observer = observer
+            self.pid = pid
+        }
     }
 
     var onEvent: ((WindowEvent) -> Void)?
@@ -91,17 +97,36 @@ final class WindowLifecycleMonitor {
     }
 
     /// Ensures every regular app and each given window is observed. Safe to call repeatedly.
-    func sync(windows: [TrackedWindow]) {
+    /// Returns true while some registrations are still pending because an app was not ready yet,
+    /// so the caller can try again later instead of silently missing that app's new windows.
+    @discardableResult
+    func sync(windows: [TrackedWindow]) -> Bool {
+        var hasPending = false
         for app in NSWorkspace.shared.runningApplications
         where app.activationPolicy == .regular && app.processIdentifier != ownPID && !app.isTerminated {
-            _ = watch(for: app.processIdentifier)
+            guard let watch = watch(for: app.processIdentifier) else { continue }
+            if !watch.pendingApp.isEmpty { registerAppNotifications(watch) }
+            if !watch.pendingApp.isEmpty { hasPending = true }
         }
         for window in windows {
             guard let watch = watches[window.pid], !watch.windows.contains(window.element) else { continue }
-            for name in Self.windowNotifications {
-                AXObserverAddNotification(watch.observer, window.element.raw, name as CFString, refcon)
+            let results = Self.windowNotifications.map {
+                AXObserverAddNotification(watch.observer, window.element.raw, $0 as CFString, refcon)
             }
-            watch.windows.append(window.element)
+            // Only a not-ready app is worth retrying; other errors (unsupported) will never succeed.
+            if results.contains(.cannotComplete) {
+                hasPending = true
+            } else {
+                watch.windows.append(window.element)
+            }
+        }
+        return hasPending
+    }
+
+    private func registerAppNotifications(_ watch: AppWatch) {
+        let app = AXElement.application(pid: watch.pid)
+        watch.pendingApp = watch.pendingApp.filter {
+            AXObserverAddNotification(watch.observer, app.raw, $0 as CFString, refcon) == .cannotComplete
         }
     }
 
@@ -126,12 +151,10 @@ final class WindowLifecycleMonitor {
             MainActor.assumeIsolated { monitor.receive(notification: name, element: AXElement(raw: element)) }
         }
         guard AXObserverCreate(pid, callback, &observer) == .success, let observer else { return nil }
-        let app = AXElement.application(pid: pid)
-        for name in Self.appNotifications {
-            AXObserverAddNotification(observer, app.raw, name as CFString, refcon)
-        }
         CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .defaultMode)
-        let watch = AppWatch(observer: observer)
+        let watch = AppWatch(observer: observer, pid: pid)
+        watch.pendingApp = Self.appNotifications
+        registerAppNotifications(watch)
         watches[pid] = watch
         return watch
     }

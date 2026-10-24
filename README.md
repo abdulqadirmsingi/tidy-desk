@@ -11,6 +11,7 @@ A native macOS menu bar app that automatically tiles your windows. Swift, SwiftU
 - Drag a tile's edge to resize (neighbours adapt); drop a window on another tile to swap; keyboard shortcuts for swap, move to another display, grow/shrink, reset.
 - Learns minimum sizes of apps that refuse to shrink and floats windows that can't fit.
 - **Focus mode**, **No Peek** (dims windows beneath the active one), **Clean Space** (clean backdrop behind one window), a keyboard-driven **window switcher**, active-window border/glow.
+- *Explain Active Window* in the menu says in plain words why a window is or isn't tiled.
 - Per-display settings that survive unplugging a display; "restore previous arrangement"; pause at any time.
 - Entirely local: no analytics, screenshots, or network access. See [PRIVACY.md](PRIVACY.md).
 

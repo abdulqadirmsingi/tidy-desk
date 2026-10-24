@@ -70,6 +70,7 @@ struct MenuBarContent: View {
             isOn: Binding(get: { ui.activeWindowFloating ?? false }, set: { _ in model.coordinator.toggleFloatActive() })
         )
         .disabled(ui.activeWindowFloating == nil)
+        Button("Explain Active Window…") { model.showWindowExplanation() }
 
         Divider()
 

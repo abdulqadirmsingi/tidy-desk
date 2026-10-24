@@ -72,7 +72,15 @@ extension TilingCoordinator {
             let weights = RatioInference.weights(
                 afterResizing: currentTile, to: frame, oldFrames: plan.tileFrames, kind: current.layout,
                 area: display.usableFrame, margin: current.margin, spacing: current.spacing, current: current.weights)
-            guard weights != current.weights else { return false }
+            guard weights != current.weights else {
+                // The neighbours cannot absorb this resize (single window, or an edge nothing shares).
+                // Snapping back would feel like the window can't be resized; float it instead.
+                let change = max(abs(frame.width - target.width), abs(frame.height - target.height))
+                guard change > TilingTuning.floatOnResizeThreshold else { return false }
+                userFloating.insert(id)
+                ui.notice = "\(window.appName) is now floating because the layout can’t take that size. Use Float Active Window to tile it again."
+                return true
+            }
             settings.update(silent: true) { $0.updateSettings(for: displayID) { $0.weights = weights } }
             return true
         }
