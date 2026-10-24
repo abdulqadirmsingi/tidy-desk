@@ -57,6 +57,7 @@ extension TilingCoordinator {
 
     func focusChanged() {
         refreshStatusIfChanged()
+        if ui.status == .needsPermission { suggest(.init(status: .needsPermission)) }
         // A focused window we have never seen is a new window whose creation event we missed
         // (for example an app that was still starting). Pull it into the layout.
         if let focused = focusedWindowElement(), discovery.window(for: focused.element) == nil,

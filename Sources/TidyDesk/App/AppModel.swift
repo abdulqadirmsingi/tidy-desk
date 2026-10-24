@@ -31,6 +31,7 @@ final class AppModel {
     @ObservationIgnored private let shortcutCenter = GlobalShortcutCenter()
     @ObservationIgnored private let switcher = SwitcherController()
     @ObservationIgnored private let palettePresenter = FloatingPanelPresenter()
+    @ObservationIgnored private let toast = ToastPresenter()
 
     init() {
         let url = ConfigurationStore.defaultFileURL(appFolderName: Branding.name)
@@ -54,6 +55,7 @@ final class AppModel {
             if old.appearance.mode != new.appearance.mode { Self.applyAppearance(new.appearance.mode) }
         }
         Self.applyAppearance(settings.configuration.appearance.mode)
+        coordinator.onSuggestion = { [weak self] in self?.present($0) }
         shortcutCenter.onAction = { [weak self] in self?.perform($0) }
         registerShortcuts()
         coordinator.start()
@@ -76,6 +78,39 @@ final class AppModel {
     func showSwitcher() {
         let groups = coordinator.switcherGroups()
         switcher.show(groups: groups) { [weak self] id in self?.coordinator.activate(id) }
+    }
+
+    /// Shows a suggestion unless the welcome tour is open, which already covers the same ground.
+    private func present(_ suggestion: SuggestionKind) {
+        guard !presenter.isShown(.onboarding) else { return }
+        let dismiss = { [weak self] in
+            self?.toast.dismiss()
+            self?.coordinator.suggestionDismissed(suggestion)
+        }
+        let actions: SuggestionActions
+        switch suggestion {
+        case .grantAccess:
+            actions = SuggestionActions(
+                primary: { [weak self] in
+                    guard let self else { return }
+                    toast.dismiss()
+                    presenter.show(.onboarding, model: self, startAt: .grant)
+                },
+                secondary: nil, dismiss: dismiss)
+        case .tidyUp:
+            actions = SuggestionActions(
+                primary: { [weak self] in
+                    self?.toast.dismiss()
+                    self?.settings.update { $0.hasCompletedOnboarding = true; $0.isTilingEnabled = true }
+                    self?.coordinator.arrangeNow()
+                },
+                secondary: { [weak self] in
+                    self?.toast.dismiss()
+                    self?.coordinator.arrangeNow()
+                },
+                dismiss: dismiss)
+        }
+        toast.show(SuggestionToastView(kind: suggestion, actions: actions), onTimeout: {})
     }
 
     func showCommandPalette() {

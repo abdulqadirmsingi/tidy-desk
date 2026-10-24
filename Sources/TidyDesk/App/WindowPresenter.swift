@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import TidyDeskCore
 
 /// Opens the app's own windows on demand. The app is a menu bar agent, so nothing opens at launch
 /// except onboarding on first run.
@@ -18,7 +19,9 @@ final class WindowPresenter {
 
     private var windows: [Kind: NSWindow] = [:]
 
-    func show(_ kind: Kind, model: AppModel) {
+    func isShown(_ kind: Kind) -> Bool { windows[kind] != nil }
+
+    func show(_ kind: Kind, model: AppModel, startAt step: OnboardingStep = .welcome) {
         if let existing = windows[kind] {
             NSApp.activate()
             existing.makeKeyAndOrderFront(nil)
@@ -27,7 +30,7 @@ final class WindowPresenter {
         let content: AnyView
         switch kind {
         case .settings: content = AnyView(SettingsView().environment(model))
-        case .onboarding: content = AnyView(OnboardingView().environment(model))
+        case .onboarding: content = AnyView(OnboardingView(startAt: step).environment(model))
         }
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),

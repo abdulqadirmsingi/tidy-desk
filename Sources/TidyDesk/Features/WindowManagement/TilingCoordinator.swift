@@ -59,6 +59,11 @@ final class TilingCoordinator {
     /// Bounds how long we keep retrying observer registration for apps that are not ready yet.
     var observerRetry = RetrySchedule()
     var observersPending = false
+    /// Raised when something is worth suggesting; the app decides how to present it.
+    var onSuggestion: ((SuggestionKind) -> Void)?
+    var suggestionPolicy = SuggestionPolicy()
+    /// Window set seen by the last paused-mode scan; nil until a baseline exists.
+    var knownWindows: Set<WindowID>?
 
     private var reconcileTask: Task<Void, Never>?
 
@@ -163,10 +168,12 @@ final class TilingCoordinator {
         case .pausedByUser where manual: break
         case .pausedByUser:
             refreshDisplays()
+            scanWhilePaused()
             syncUI()
             return
         case .needsPermission, .stageManagerOn, .asleep:
             overlays.removeAll()
+            if status == .needsPermission { suggest(.init(status: status)) }
             return
         }
 
@@ -180,6 +187,23 @@ final class TilingCoordinator {
         refreshOverlays()
         retryObserversIfNeeded()
     }
+
+    /// While tiling is off we only look (no writes): keep observers attached so new windows are noticed,
+    /// and offer to tidy up when one appears.
+    private func scanWhilePaused() {
+        let found = discoverAndTrack()
+        monitor.sync(windows: found.eligible)
+        let current = Set(found.eligible.map(\.id))
+        let appeared = knownWindows.map { !current.subtracting($0).isEmpty } ?? false
+        knownWindows = current
+        suggest(.init(status: .pausedByUser, eligibleWindowCount: current.count, newWindowAppeared: appeared))
+    }
+
+    func suggest(_ context: SuggestionPolicy.Context) {
+        if let suggestion = suggestionPolicy.evaluate(context) { onSuggestion?(suggestion) }
+    }
+
+    func suggestionDismissed(_ kind: SuggestionKind) { suggestionPolicy.noteDismissed(kind) }
 
     private func retryObserversIfNeeded() {
         guard observersPending else {
