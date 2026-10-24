@@ -31,6 +31,8 @@ final class TilingUIState {
     var isCleanSpaceActive = false
     var isNoPeekActive = false
     var canRestorePreviousArrangement = false
+    /// Whether the active window is floating; nil when there is no active window to act on.
+    var activeWindowFloating: Bool?
     /// Short, non-blocking explanation of the last notable problem.
     var notice: String?
 

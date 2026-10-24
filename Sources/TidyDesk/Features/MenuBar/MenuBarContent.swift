@@ -64,6 +64,11 @@ struct MenuBarContent: View {
         Button("Restore Previous Arrangement") { model.coordinator.restorePreviousArrangement() }
             .disabled(!ui.canRestorePreviousArrangement)
         Button("Window Switcher…") { model.showSwitcher() }
+        Toggle(
+            "Float Active Window",
+            isOn: Binding(get: { ui.activeWindowFloating ?? false }, set: { _ in model.coordinator.toggleFloatActive() })
+        )
+        .disabled(ui.activeWindowFloating == nil)
 
         Divider()
 

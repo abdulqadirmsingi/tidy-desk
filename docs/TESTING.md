@@ -26,6 +26,8 @@ Run: `swift test` or `scripts/test.sh`. No Accessibility permission needed. Resu
 
 Permission service matches system state; display geometry consistent; `SettingsStore` persistence and silent/notifying updates; reset keeps onboarding flag; hot-key registration (own-map conflicts only); login-item state readable.
 
+Float toggle (app target): state and UI flags are tested with an injected window, not a real one.
+
 ### Opt-in Accessibility test
 
 `TIDYDESK_AX_TESTS=1 swift test` — moves/resizes a window created by the test through `AXElement`/`WindowPlacementService`. **Skipped in the last run** because the host shell isn't trusted for Accessibility. It has not passed yet.

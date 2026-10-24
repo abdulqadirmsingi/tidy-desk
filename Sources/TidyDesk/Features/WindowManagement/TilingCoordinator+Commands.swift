@@ -55,6 +55,7 @@ extension TilingCoordinator {
             exitPresentationModes()
             scheduleReconcile()
         }
+        syncUI()
         refreshOverlays()
     }
 
@@ -97,9 +98,19 @@ extension TilingCoordinator {
     }
 
     func toggleFloatActive() {
-        guard let window = activeWindow() else { return }
-        if userFloating.remove(window.id) == nil { userFloating.insert(window.id) }
+        guard let window = activeWindow() else {
+            ui.notice = "Click a window first, then float or tile it."
+            return
+        }
+        toggleFloat(window.id)
+    }
+
+    /// A floating window is left exactly where the user put it; tiling it again returns it to its slot.
+    func toggleFloat(_ id: WindowID) {
+        if userFloating.remove(id) == nil { userFloating.insert(id) }
+        ui.notice = nil
         reconcile()
+        syncUI()
     }
 
     func cycleStack() {
