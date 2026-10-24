@@ -9,3 +9,4 @@ xcuserdata/
 *.mobileprovision
 *.dmg
 *.zip
+Config/local.env

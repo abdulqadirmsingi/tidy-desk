@@ -6,6 +6,8 @@ struct OnboardingView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State var flow = OnboardingFlow()
     @State var hasArranged = false
+    @State var showStaleHelp = false
+    static let staleHelpDelay: Duration = .seconds(6)
 
     init(startAt step: OnboardingStep = .welcome) {
         var flow = OnboardingFlow()
@@ -72,7 +74,9 @@ struct OnboardingView: View {
             if flow.isLast(permissionGranted: granted) {
                 Button("Finish") { model.completeOnboarding() }.glassButton(prominent: true).keyboardShortcut(.defaultAction)
             } else {
-                Button("Continue") { move { flow.advance(permissionGranted: granted) } }
+                Button(flow.current == .grant && !granted ? "Skip for now" : "Continue") {
+                    move { flow.advance(permissionGranted: granted) }
+                }
                     .glassButton(prominent: true).keyboardShortcut(.defaultAction)
             }
         }
