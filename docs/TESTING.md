@@ -19,6 +19,7 @@ Run: `swift test` or `scripts/test.sh`. No Accessibility permission needed. Resu
 | Window order | first = primary, append new, removal keeps order, duplicate events, alive-but-unlisted slot kept, swap/move/promote, **display disconnect/reconnect restore**, windows closed while absent not restored |
 | Placement budget | refusal cap, one-time stubborn signal, success forgives, per-window, self-moving windows, slow corrections ignored, reset/retain, bounded loop |
 | Tiling status | priority of permission, sleep, Stage Manager, user pause; resumes when Stage Manager is off |
+| Onboarding flow | step order, permission steps skipped when granted, no stranding when access arrives mid-tour, back/forward direction, progress |
 | Eligibility / explanation / retry schedule | every disqualifier, missing attributes tolerated, explanations distinct and title-free, finite growing retry delays |
 | Inexpressible resizes | shrinking a single window or a full-height column tile changes no weights (the case that now floats the window) |
 | Focus mode | enter/exit, invalidation rules |
@@ -49,6 +50,7 @@ Mark with date and macOS version when done.
 
 | # | Scenario | Result |
 |---|---|---|
+| 1a | Onboarding looks right: frosted window, glass panels/buttons, animated demo, slide transitions; Reduce Motion and Reduce Transparency respected (**not yet verified**; layout of every step was checked offscreen only, with glass/blur/animation not rendered) |
 | 1 | Launch: menu bar icon appears, no Dock icon, welcome tour opens on first run | ☐ |
 | 2 | Permission: grant via tour; icon changes from warning; revoke while running → tiling stops, no prompts loop | ☐ |
 | 3 | Safari, Finder, Terminal, Xcode, Cursor/another editor tile in Grid and Columns (1–4) | ☐ |
