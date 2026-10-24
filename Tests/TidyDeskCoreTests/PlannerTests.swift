@@ -153,3 +153,29 @@ struct ConstraintLearnerTests {
         #expect(ConstraintLearner.learnedMinimum(requested: requested, actual: actual, existing: existing, plausibleLimit: limit) == nil)
     }
 }
+
+@Suite("Resizes the layout cannot express")
+struct InexpressibleResizeTests {
+    @Test func shrinkingASingleWindowChangesNoWeights() {
+        let area = CGRect(x: 0, y: 0, width: 1600, height: 1000)
+        let plan = TilePlanner.plan(windows: windows(1), settings: DisplaySettings(), area: area)
+        var smaller = plan.tileFrames[0]
+        smaller.size = CGSize(width: 800, height: 500)
+        let weights = RatioInference.weights(
+            afterResizing: 0, to: smaller, oldFrames: plan.tileFrames, kind: .grid, area: area,
+            margin: 8, spacing: 8, current: .equal)
+        #expect(weights == .equal)
+    }
+
+    @Test func changingTheHeightOfAFullHeightColumnTileChangesNoWeights() {
+        let area = CGRect(x: 0, y: 0, width: 1600, height: 1000)
+        let settings = DisplaySettings(layout: .columns, maxWindows: 3)
+        let plan = TilePlanner.plan(windows: windows(3), settings: settings, area: area)
+        var shorter = plan.tileFrames[1]
+        shorter.size.height -= 300
+        let weights = RatioInference.weights(
+            afterResizing: 1, to: shorter, oldFrames: plan.tileFrames, kind: .columns, area: area,
+            margin: 8, spacing: 8, current: .equal)
+        #expect(weights == .equal)
+    }
+}
