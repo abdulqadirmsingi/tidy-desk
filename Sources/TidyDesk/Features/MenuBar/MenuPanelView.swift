@@ -145,6 +145,11 @@ struct MenuPanelView: View {
                         get: { ui.activeWindowFloating ?? false }, set: { _ in model.coordinator.toggleFloatActive() }))
                     .toggleStyle(.switch).labelsHidden().disabled(ui.activeWindowFloating == nil)
                 }
+                Button { run { model.showWindowExplanation() } } label: {
+                    Label("Why isn’t this window tiled?", systemImage: "questionmark.circle")
+                        .font(.callout).frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain).foregroundStyle(.secondary)
             }
             .padding(12)
             .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
