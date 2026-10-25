@@ -34,7 +34,9 @@ final class AppModel {
     @ObservationIgnored private let switcher = SwitcherController()
     @ObservationIgnored private let palettePresenter = FloatingPanelPresenter()
     @ObservationIgnored private let toast = ToastPresenter()
-    @ObservationIgnored private var statusItem: StatusItemController?
+    @ObservationIgnored private var statusItem: AnyObject?
+    /// How the menu bar icon is created; tests substitute a stub so no real icon is added to the menu bar.
+    @ObservationIgnored var makeStatusItem: (AppModel) -> AnyObject = { StatusItemController(model: $0) }
 
     init() {
         let url = ConfigurationStore.defaultFileURL(appFolderName: Branding.name)
@@ -59,6 +61,7 @@ final class AppModel {
             if old.showInDock != new.showInDock { self?.applyDockPolicy() }
         }
         Self.applyAppearance(settings.configuration.appearance.mode)
+        installMenuBar()
         coordinator.onSuggestion = { [weak self] in self?.present($0) }
         shortcutCenter.onAction = { [weak self] in self?.perform($0) }
         registerShortcuts()
@@ -87,11 +90,20 @@ final class AppModel {
         frontApp = (app.localizedName ?? "App", app.bundleIdentifier, app.icon)
     }
 
+    /// Creates the menu bar icon and applies the Dock preference. Kept separate so it can be tested.
+    func installMenuBar() {
+        applyDockPolicy()
+        if statusItem == nil { statusItem = makeStatusItem(self) }
+    }
+
+    var hasMenuBarItem: Bool { statusItem != nil }
+
     /// A menu bar agent by default; optionally also shown in the Dock.
     private func applyDockPolicy() {
         let wantsDock = settings.configuration.showInDock
-        NSApp.setActivationPolicy(wantsDock ? .regular : .accessory)
-        if wantsDock { NSApp.activate() }
+        guard let app = NSApp else { return }  // absent only when running under tests
+        app.setActivationPolicy(wantsDock ? .regular : .accessory)
+        if wantsDock { app.activate() }
     }
 
     func showSwitcher() {
