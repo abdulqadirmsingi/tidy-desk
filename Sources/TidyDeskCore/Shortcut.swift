@@ -45,6 +45,7 @@ public enum ShortcutAction: String, CaseIterable, Codable, Sendable {
     case focusMode, noPeek, cleanSpace, windowSwitcher
     case growTile, shrinkTile, resetSizes, cycleStack, toggleFloat
     case commandPalette
+    case oneWindow, twoWindows, threeWindows, fourWindows
 
     public var title: String {
         switch self {
@@ -66,6 +67,10 @@ public enum ShortcutAction: String, CaseIterable, Codable, Sendable {
         case .cycleStack: "Cycle Stacked Windows"
         case .toggleFloat: "Float / Tile Active Window"
         case .commandPalette: "Command Palette"
+        case .oneWindow: "Tile 1 Window per Display"
+        case .twoWindows: "Tile 2 Windows per Display"
+        case .threeWindows: "Tile 3 Windows per Display"
+        case .fourWindows: "Tile 4 Windows per Display"
         }
     }
 
@@ -78,6 +83,10 @@ public enum ShortcutAction: String, CaseIterable, Codable, Sendable {
         let co = Self.controlOption
         switch self {
         case .commandPalette: return Shortcut(keyCode: 40, modifiers: co)  // K
+        case .oneWindow: return Shortcut(keyCode: 18, modifiers: co.union(.command))
+        case .twoWindows: return Shortcut(keyCode: 19, modifiers: co.union(.command))
+        case .threeWindows: return Shortcut(keyCode: 20, modifiers: co.union(.command))
+        case .fourWindows: return Shortcut(keyCode: 21, modifiers: co.union(.command))
         case .arrangeNow: return Shortcut(keyCode: 36, modifiers: co)  // Return
         case .toggleTiling: return Shortcut(keyCode: 35, modifiers: co)  // P (pause)
         case .toggleLayout: return Shortcut(keyCode: 37, modifiers: co)  // L
@@ -115,6 +124,7 @@ public enum ShortcutAction: String, CaseIterable, Codable, Sendable {
         case .cycleStack: ["stack", "next window", "overlap"]
         case .toggleFloat: ["float", "free", "untile", "pin"]
         case .commandPalette: ["search", "find", "commands", "help"]
+        case .oneWindow, .twoWindows, .threeWindows, .fourWindows: ["layout", "count", "number", "how many", "windows per display"]
         }
     }
 }

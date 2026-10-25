@@ -27,6 +27,12 @@ struct WindowPlacementService {
         }
     }
 
+    /// Moves a window without touching its size. Returns the position the app accepted, or nil on failure.
+    func move(_ element: AXElement, to origin: CGPoint) -> CGPoint? {
+        do { try element.setPosition(origin) } catch { return nil }
+        return element.frame?.origin
+    }
+
     func raise(_ element: AXElement, pid: pid_t, activate: Bool) {
         element.perform(kAXRaiseAction)
         if activate { NSRunningApplication(processIdentifier: pid)?.activate() }

@@ -27,6 +27,7 @@ Run: `swift test` or `scripts/test.sh`. No Accessibility permission needed. Resu
 | Inexpressible resizes | shrinking a single window or a full-height column tile changes no weights (the case that now floats the window) |
 | Suggestion policy | tidy-up needs a new window and ≥2 windows while paused, silent when active/Stage Manager/asleep, cooldowns, "Not Now" silence, access reminder is rare and silenced separately; coordinator raises each once |
 | Menu bar symbol / Dock setting | symbol per status, attention states never look active, `showInDock` defaults off and survives older files |
+| Gestures / centring / count shortcuts | unchanged, nudge snap-back, plain drag floats, ⌘-drag swaps, resize incl. left edge, centring and oversize anchoring, ⌃⌥⌘1–4 |
 | Focus mode | enter/exit, invalidation rules |
 | Configuration | round trip, missing file, older/partial files, missing version, newer schema refused and untouched, corrupt file backed up with original bytes, same-instant corruption never overwrites a backup, backups pruned, wrong-type/empty files, unreadable file set aside, honest messages, per-display override/reset, clamping, delete |
 | Newer-version protection | save/delete refuse a newer file, load→edit→save cycle keeps it, explicit reset backs it up first, current/unversioned files stay writable; same flow through `SettingsStore` |
@@ -70,6 +71,7 @@ Mark with date and macOS version when done.
 | 5 | Non-resizable window (e.g. System Settings, Calculator) is left floating | ☐ |
 | 6 | App with large minimum size → learned minimum appears in Settings → Apps; layout adapts or floats | ☐ |
 | 7 | Modal dialog / sheet / popover / menu is never moved | ☐ |
+| 8a | ⌘-drag a window onto another tile swaps (keep ⌘ held until release); plain drag leaves it floating with a notice; ⌃⌥⌘1–4 change windows per display; a window that cannot fit (e.g. Prime Video) is centred once, not left covering the tiles (**not yet verified**) |
 | 8 | Drag a tile edge → neighbours adapt; drop onto another tile → swap; drag to another display | ☐ |
 | 9 | Shortcuts: all defaults register; a conflicting one shows a warning | ☐ |
 | 10 | Stack and Float overflow; cycle stack; float/tile active window | ☐ |

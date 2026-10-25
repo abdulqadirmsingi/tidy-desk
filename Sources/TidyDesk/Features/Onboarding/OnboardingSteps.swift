@@ -126,7 +126,7 @@ extension OnboardingView {
                 layoutCard(.grid, offset: 0)
                 layoutCard(.columns, offset: 2)
             }
-            Text("Extra windows can stack in the last tile or stay floating. Drop a window on another tile to swap them.")
+            Text("Extra windows can stack in the last tile or stay floating. Hold ⌘ while dragging a window onto another tile to swap them.")
                 .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }
     }
