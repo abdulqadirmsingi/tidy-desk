@@ -65,7 +65,7 @@ Mark with date and macOS version when done.
 | 2 | Permission: grant via tour; icon changes from warning; revoke while running → tiling stops, no prompts loop | ☐ |
 | 3 | Safari, Finder, Terminal, Xcode, Cursor/another editor tile in Grid and Columns (1–4) | ☐ |
 | 4a | Open an app that is slow to start (e.g. Prime Video): it joins the layout within a few seconds, without clicking elsewhere (**not yet verified**) |
-| 4b | *Explain Active Window* on Prime Video states the real reason (**not yet verified**) |
+| 4b | *Why isn’t this window tiled?* (menu panel button, or ⌃⌥K → “explain”) on Prime Video states the real reason (**not yet verified**) |
 | 4c | Shrink a single window by dragging its edge: it floats with a notice instead of snapping back (**not yet verified**) |
 | 4 | Open/close/minimize/restore/hide/unhide windows → layout updates once, no flicker | ☐ |
 | 5 | Non-resizable window (e.g. System Settings, Calculator) is left floating | ☐ |

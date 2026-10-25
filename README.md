@@ -40,7 +40,7 @@ Ad-hoc signed builds get a new identity on every rebuild, so macOS may ask you t
 
 ## The menu bar panel, Dock and finding the app
 
-Click the menu bar icon for a glass panel: status at a glance, the **Automatic tiling** switch, layout, a **Tile <current app>** toggle, *Float this window*, Arrange / Undo / Switcher / Commands, and the Focus / No Peek / Clean Space modes. Right-click the icon for Settings and Quit. The icon changes with state (grid = tiling, pause = off, triangle = needs access). If it's hard to spot among other icons, turn on **Settings → General → Also show in the Dock**. Launching the app again (Spotlight, Finder or the Dock) always opens Settings.
+Click the menu bar icon for a glass panel: status at a glance, the **Automatic tiling** switch, layout, a **Tile <current app>** toggle, *Float this window*, *Why isn’t this window tiled?*, Arrange / Undo / Switcher / Commands, and the Focus / No Peek / Clean Space modes. Right-click the icon for Settings and Quit. The icon changes with state (grid = tiling, pause = off, triangle = needs access). If it's hard to spot among other icons, turn on **Settings → General → Also show in the Dock**. Launching the app again (Spotlight, Finder or the Dock) always opens Settings.
 
 ## Shortcuts and the command palette
 
