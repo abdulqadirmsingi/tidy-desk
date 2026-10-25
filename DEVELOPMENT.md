@@ -45,7 +45,7 @@ The opt-in test needs the host that runs `swift test` (Terminal, Xcode) to be li
 
 ## Local development signing
 
-`scripts/build-app.sh` signs ad-hoc by default (`-`). Ad-hoc binaries have no stable identity, so macOS treats each rebuild as a new app and may drop the Accessibility grant. For a stable identity use your Apple Development certificate:
+`scripts/build-app.sh` now signs with the Apple Development certificate whose name contains your `git config user.email` when one exists (it prints which), and falls back to ad-hoc (`-`) otherwise. Ad-hoc binaries have no stable identity, so macOS treats each rebuild as a new app and drops the Accessibility grant. To pick a certificate yourself, or to force ad-hoc with `SIGN_IDENTITY="-"`:
 
 ```bash
 security find-identity -v -p codesigning        # list identities

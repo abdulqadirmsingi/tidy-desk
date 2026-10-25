@@ -1,6 +1,7 @@
 #!/bin/bash
 # Builds a release TidyDesk.app into build/. Usage: scripts/build-app.sh [--run]
-# Signing: SIGN_IDENTITY="Apple Development: Name (TEAMID)" keeps Accessibility permission stable
+# Signing: by default an Apple Development certificate matching your git email is used if present, else ad-hoc.
+# Override: SIGN_IDENTITY="Apple Development: Name (TEAMID)" keeps Accessibility permission stable
 # across rebuilds. Default is ad-hoc ("-"); macOS may ask you to re-grant access after each rebuild.
 # For distribution use SIGN_IDENTITY="Developer ID Application: ..." DIST=1 (see docs/RELEASE.md).
 set -euo pipefail
@@ -10,6 +11,16 @@ source "$ROOT/Config/branding.env"
 # Optional per-machine settings (git-ignored), e.g. SIGN_IDENTITY="Apple Development: Name (TEAMID)".
 # A stable identity keeps the Accessibility grant valid across rebuilds.
 if [[ -f "$ROOT/Config/local.env" ]]; then source "$ROOT/Config/local.env"; fi
+# Without an explicit identity, use the Apple Development certificate whose name contains your git email, so
+# the Accessibility grant survives rebuilds. Set SIGN_IDENTITY="-" to force ad-hoc signing.
+if [[ -z "${SIGN_IDENTITY:-}" ]]; then
+    EMAIL="$(git -C "$ROOT" config user.email 2>/dev/null || true)"
+    if [[ -n "$EMAIL" ]]; then
+        SIGN_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null \
+            | grep -F "Apple Development: $EMAIL" | head -1 | sed -E 's/.*"(.*)".*/\1/' || true)"
+        if [[ -n "$SIGN_IDENTITY" ]]; then echo "Signing with: $SIGN_IDENTITY (matched your git email)"; fi
+    fi
+fi
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 BUILD_DIR="$ROOT/build"
 APP="$BUILD_DIR/$APP_NAME.app"

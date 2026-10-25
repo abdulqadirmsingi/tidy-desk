@@ -36,7 +36,7 @@ open Package.swift              # develop in Xcode
 2. Click **Open Accessibility Settings**, then enable TidyDesk under *System Settings → Privacy & Security → Accessibility*.
 3. If the menu bar still shows a warning icon after a few seconds, quit and reopen the app.
 
-Ad-hoc signed builds get a new identity on every rebuild, so macOS may ask you to grant access again. Sign with your Apple Development certificate to keep it stable: `SIGN_IDENTITY="Apple Development: …" scripts/build-app.sh` (see [DEVELOPMENT.md](DEVELOPMENT.md)).
+The build script signs with the Apple Development certificate matching your git email when you have one, which keeps the grant across rebuilds. Ad-hoc builds (no matching certificate) get a new identity on every rebuild, so macOS asks again; choose a certificate explicitly with: `SIGN_IDENTITY="Apple Development: …" scripts/build-app.sh` (see [DEVELOPMENT.md](DEVELOPMENT.md)).
 
 ## The menu bar panel, Dock and finding the app
 
