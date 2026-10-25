@@ -179,3 +179,64 @@ struct InexpressibleResizeTests {
         #expect(weights == .equal)
     }
 }
+
+
+@Suite("False minimum sizes")
+struct FalseMinimumTests {
+    private let usable = CGSize(width: 1512, height: 920)
+    private var limit: CGSize { ConstraintLearner.plausibleLimit(forUsable: usable) }
+
+    @Test func aTerminalSnappingToWholeCellsIsNotARefusal() {
+        let requested = CGRect(x: 0, y: 0, width: 744, height: 448)
+        let snapped = CGRect(x: 0, y: 0, width: 749, height: 461)  // one character cell larger
+        #expect(ConstraintLearner.accepted(requested: requested, actual: snapped))
+        #expect(ConstraintLearner.learnedMinimum(requested: requested, actual: snapped, existing: .zero, plausibleLimit: limit) == nil)
+    }
+
+    @Test func aGenuineRefusalBeyondTheSnapAllowanceIsStillLearned() {
+        let requested = CGRect(x: 0, y: 0, width: 500, height: 448)
+        let actual = CGRect(x: 0, y: 0, width: 800, height: 448)
+        #expect(!ConstraintLearner.accepted(requested: requested, actual: actual))
+        #expect(ConstraintLearner.learnedMinimum(requested: requested, actual: actual, existing: .zero, plausibleLimit: limit)
+            == CGSize(width: 800, height: 0))
+    }
+
+    @Test func aStaleFullHeightReadingIsNeverRememberedAsAMinimum() {
+        // Terminal reported 861 high right after being asked for 448: the old size, not a limit.
+        let requested = CGRect(x: 0, y: 0, width: 744, height: 448)
+        let stale = CGRect(x: 0, y: 0, width: 744, height: 861)
+        #expect(ConstraintLearner.learnedMinimum(requested: requested, actual: stale, existing: .zero, plausibleLimit: limit) == nil)
+    }
+
+    @Test func plausibleLimitIsThreeQuartersOfTheUsableArea() {
+        #expect(limit == CGSize(width: 1134, height: 690))
+    }
+
+    @Test func savedImpossibleMinimumsAreIgnoredButRealOnesKept() {
+        #expect(ConstraintLearner.usableMinimum(learned: CGSize(width: 0, height: 861), usable: usable) == .zero)
+        #expect(ConstraintLearner.usableMinimum(learned: CGSize(width: 1026, height: 0), usable: usable)
+            == CGSize(width: 1026, height: 0))
+        #expect(ConstraintLearner.usableMinimum(learned: CGSize(width: 1300, height: 600), usable: usable)
+            == CGSize(width: 0, height: 600))
+    }
+
+    @Test func aWindowWithARepairedMinimumTilesInATwoByTwoGrid() {
+        let area = CGRect(x: 0, y: 0, width: 1512, height: 920)
+        let repaired = ConstraintLearner.usableMinimum(learned: CGSize(width: 0, height: 861), usable: area.size)
+        let ids = (0..<4).map { _ in WindowID() }
+        let windows = ids.enumerated().map { PlannerWindow(id: $1, minimumSize: $0 == 1 ? repaired : .zero) }
+        let plan = TilePlanner.plan(windows: windows, settings: DisplaySettings(maxWindows: 4, overflow: .float), area: area)
+        #expect(plan.placements.allSatisfy { if case .tile = $0.role { true } else { false } })
+    }
+
+    @Test func theUnrepairedBogusMinimumLeavesOtherWindowsUntiled() {
+        let area = CGRect(x: 0, y: 0, width: 1512, height: 920)
+        let ids = (0..<4).map { _ in WindowID() }
+        let windows = ids.enumerated().map { PlannerWindow(id: $1, minimumSize: $0 == 1 ? CGSize(width: 0, height: 861) : .zero) }
+        let plan = TilePlanner.plan(windows: windows, settings: DisplaySettings(maxWindows: 4, overflow: .float), area: area)
+        // A 861-high "minimum" forces Terminal into a full-height column, so a 2x2 grid cannot form and the
+        // later windows are pushed out: the pile-up seen on the real machine.
+        #expect(plan.placements.contains { $0.role == .floating })
+        #expect(plan.tileFrames.count < 4)
+    }
+}

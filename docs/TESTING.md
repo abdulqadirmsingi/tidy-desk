@@ -28,6 +28,7 @@ Run: `swift test` or `scripts/test.sh`. No Accessibility permission needed. Resu
 | Suggestion policy | tidy-up needs a new window and ≥2 windows while paused, silent when active/Stage Manager/asleep, cooldowns, "Not Now" silence, access reminder is rare and silenced separately; coordinator raises each once |
 | Menu bar symbol / Dock setting | symbol per status, attention states never look active, `showInDock` defaults off and survives older files |
 | Gestures / centring / count shortcuts | unchanged, nudge snap-back, plain drag floats, ⌘-drag swaps, resize incl. left edge, centring and oversize anchoring, ⌃⌥⌘1–4 |
+| False minimum sizes | cell-snapping overshoot is not a refusal, genuine refusals still learned, stale full-height reading never remembered, 75% plausibility cap, saved impossible minimums ignored, a repaired minimum tiles in a 2×2 grid, the unrepaired one pushes other windows out |
 | Focus mode | enter/exit, invalidation rules |
 | Configuration | round trip, missing file, older/partial files, missing version, newer schema refused and untouched, corrupt file backed up with original bytes, same-instant corruption never overwrites a backup, backups pruned, wrong-type/empty files, unreadable file set aside, honest messages, per-display override/reset, clamping, delete |
 | Newer-version protection | save/delete refuse a newer file, load→edit→save cycle keeps it, explicit reset backs it up first, current/unversioned files stay writable; same flow through `SettingsStore` |
@@ -69,6 +70,7 @@ Mark with date and macOS version when done.
 | 4c | Shrink a single window by dragging its edge: it floats with a notice instead of snapping back (**not yet verified**) |
 | 4 | Open/close/minimize/restore/hide/unhide windows → layout updates once, no flicker | ☐ |
 | 5 | Non-resizable window (e.g. System Settings, Calculator) is left floating | ☐ |
+| 5a | Open Terminal, Claude, Finder, WhatsApp together with tiling on: they tile without any being left floating because of a wrong learned minimum; Settings → Apps → *Clear Learned Sizes* shows only plausible values (**reported broken by the owner; fix not yet verified**) |
 | 6 | App with large minimum size → learned minimum appears in Settings → Apps; layout adapts or floats | ☐ |
 | 7 | Modal dialog / sheet / popover / menu is never moved | ☐ |
 | 8a | ⌘-drag a window onto another tile swaps (keep ⌘ held until release); plain drag leaves it floating with a notice; ⌃⌥⌘1–4 change windows per display; a window that cannot fit (e.g. Prime Video) is centred once, not left covering the tiles (**not yet verified**) |
