@@ -8,7 +8,7 @@ A native macOS menu bar app that automatically tiles your windows. Swift, SwiftU
 
 - Tiles eligible windows per display with **Grid** or **Columns** (1–4 windows per display), re-arranging when windows open, close, minimize, restore, hide, or move between displays.
 - Extra windows either **stack** in the last tile or **float** until space frees up.
-- Drag a tile's edge to resize (neighbours adapt); drop a window on another tile to swap; keyboard shortcuts for swap, move to another display, grow/shrink, reset.
+- Drag a tile's edge to resize (neighbours adapt); **hold ⌘ while dragging** a window onto another tile to swap (a plain drag places the window freely and leaves it floating); keyboard shortcuts for swap, move to another display, grow/shrink, reset.
 - Learns minimum sizes of apps that refuse to shrink and floats windows that can't fit.
 - **Focus mode**, **No Peek** (dims windows beneath the active one), **Clean Space** (clean backdrop behind one window), a keyboard-driven **window switcher**, active-window border/glow.
 - *Explain Active Window* in the menu says in plain words why a window is or isn't tiled.
@@ -46,7 +46,7 @@ Click the menu bar icon for a glass panel: status at a glance, the **Automatic t
 
 Remember one: **⌃⌥K** opens the command palette. Type a few letters ("max", "pause", "undo", "monitor") and press Return; it lists every command with its shortcut. The rest are Control + Option plus a key you can reach with your other hand:
 
-`↩` arrange now · `P` pause/resume · `L` Grid/Columns · `U` restore previous · `←` `→` swap with previous/next tile · `[` `]` move to previous/next display · `M` Focus · `N` No Peek · `H` Clean Space · `Tab` window switcher · `=` `-` grow/shrink tile · `0` reset sizes · `↑` cycle stack · `↓` float/tile active window.
+`↩` arrange now · `P` pause/resume · `L` Grid/Columns · `U` restore previous · `←` `→` swap with previous/next tile · `[` `]` move to previous/next display · `M` Focus · `N` No Peek · `H` Clean Space · `Tab` window switcher · `=` `-` grow/shrink tile · `0` reset sizes · `↑` cycle stack · `↓` float/tile active window · **⌃⌥⌘1–4** tile 1–4 windows per display.
 
 All are configurable in Settings → Shortcuts. The window switcher (⌃⌥Tab) groups windows by display; use arrows or Tab to move, **1–9** to jump, Return to switch, Esc to close.
 
@@ -56,7 +56,7 @@ All are configurable in Settings → Shortcuts. The window switcher (⌃⌥Tab) 
 - **Stage Manager:** detected through a read-only preference; tiling pauses while it's on.
 - **Minimum sizes:** no public API reports them; they are learned from refused resizes.
 - **No Peek / Clean Space:** overlays are placed directly beneath the active window; windows above it in z-order are not affected.
-- **Modifier-drag swapping** would need Input Monitoring; plain drag-and-drop onto a tile and shortcuts are used instead.
+- **Dragging:** ⌘-drag swaps tiles; a plain drag floats the window where you drop it (use *Float Active Window* to tile it again). ⌘ is read when you release the mouse, so keep it held until you let go.
 - **Mac App Store** is not possible (sandbox forbids controlling other apps' windows). Distribute with Developer ID — [RELEASE.md](RELEASE.md).
 - No auto-updater. Updates are manual.
 

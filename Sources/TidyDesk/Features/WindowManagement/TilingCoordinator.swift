@@ -52,6 +52,10 @@ final class TilingCoordinator {
     var stackActive: [StackKey: WindowID] = [:]
     var stackRaised: [StackKey: WindowID] = [:]
     var pendingGestures: Set<WindowID> = []
+    /// Gestures during which ⌘ was held, meaning swap rather than place freely.
+    var swapGestures: Set<WindowID> = []
+    /// Floating windows already centred once, so we never keep moving a window we put there.
+    var centeredFloating: Set<WindowID> = []
     var mouseUpMonitor: Any?
     var lastActiveWindow: WindowID?
     var isAsleep = false
@@ -264,13 +268,21 @@ final class TilingCoordinator {
             for item in plan.placements {
                 guard let window = tracked[item.id] else { continue }
                 if let frame = item.frame {
+                    centeredFloating.remove(window.id)
                     if !window.frame.isApproximatelyEqual(to: frame) { replan = apply(window, to: frame) || replan }
                 } else {
+                    centerOnce(window, on: display)
                     recoverIfOffscreen(window)
                 }
             }
             raiseActiveStackMembers(plan: plan, display: display.id)
         }
+        for id in budget.stubborn {
+            if let window = tracked[id], let display = DisplayService.display(for: window.frame, in: displays) {
+                centerOnce(window, on: display)
+            }
+        }
+        centeredFloating.formIntersection(found.alive)
         return replan
     }
 
@@ -316,6 +328,22 @@ final class TilingCoordinator {
         guard budget.recordRefusal(id) else { return false }
         ui.notice = "Some windows can’t be resized and were left floating."
         return true
+    }
+
+    /// A window that cannot be tiled (too large, refused, or overflow) is moved to the middle of its
+    /// display once, instead of sitting wherever it opened covering the tiles. Only its position is
+    /// written, never its size, so there is nothing to refuse.
+    private func centerOnce(_ window: TrackedWindow, on display: DisplayInfo) {
+        guard !centeredFloating.contains(window.id) else { return }
+        centeredFloating.insert(window.id)
+        let origin = FloatingPlacement.centeredOrigin(size: window.frame.size, in: display.usableFrame)
+        guard abs(origin.x - window.frame.minX) > LayoutDefaults.geometryTolerance
+            || abs(origin.y - window.frame.minY) > LayoutDefaults.geometryTolerance
+        else { return }
+        guard placement.move(window.element, to: origin) != nil else { return }
+        let moved = CGRect(origin: origin, size: window.frame.size)
+        tracked[window.id]?.frame = moved
+        expected[window.id] = Expectation(frames: [moved], deadline: Date().addingTimeInterval(TilingTuning.ownMoveSuppression))
     }
 
     private func recoverIfOffscreen(_ window: TrackedWindow) {

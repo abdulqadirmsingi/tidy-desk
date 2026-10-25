@@ -129,7 +129,7 @@ private struct LayoutSettings: View {
                 LayoutPreview(settings: model.settings.configuration.defaultDisplay)
             }
             Section {
-                Text("Drag a window’s edge to resize its tile; neighbours adapt. Drop a window on another tile to swap them.")
+                Text("Drag a window’s edge to resize its tile; neighbours adapt. Hold ⌘ while dragging a window onto another tile to swap them; a plain drag leaves the window floating where you drop it.")
                     .font(.callout).foregroundStyle(.secondary)
             }
         }

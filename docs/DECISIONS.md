@@ -11,8 +11,8 @@ The only public alternative to titles. `_AXUIElementGetWindow` is private and is
 ## 3. Global shortcuts with Carbon `RegisterEventHotKey`
 Public API, needs no Input Monitoring permission, reports conflicts. A `CGEventTap` would need an extra permission.
 
-## 4. Plain drag-and-drop swap instead of modifier-drag
-A global modifier-drag gesture needs an event tap/Input Monitoring. Dropping a window on a tile (detected from AX move events + mouse-up) works with Accessibility alone.
+## 4. Drag gestures (revised)
+Originally a plain drop swapped tiles, on the belief that modifier-drag needs an event tap/Input Monitoring. That was wrong: AX move events tell us a drag is happening and `NSEvent.modifierFlags` gives the ⌘ state without any extra permission. **Now:** ⌘-drag swaps/moves between tiles and displays, a plain drag floats the window where it was dropped, edge drags resize and adapt neighbours, and moves under 24 pt snap back (`GestureClassifier`, tested).
 
 ## 5. Minimum sizes are learned, not read
 No public AX attribute exposes them. Refused resizes are compared with requests and stored per bundle id.
@@ -31,3 +31,6 @@ The user opted in during onboarding; first-seen frames are recorded so *Restore 
 
 ## 10. Ad-hoc signing by default for local builds
 Avoids guessing which of several keychain identities is yours. Stable Accessibility grants need `SIGN_IDENTITY` (documented).
+
+## 11. Windows that cannot be tiled are centred once
+A window that is too large, overflowing in Float mode, or stubborn is moved (position only, never size, so nothing can be refused) to the middle of its display once, instead of covering the tiles where it opened. It is never moved again until it has been tiled in between.

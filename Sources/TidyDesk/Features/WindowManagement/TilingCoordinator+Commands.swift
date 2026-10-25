@@ -189,6 +189,14 @@ extension TilingCoordinator {
         }
     }
 
+    /// Sets how many windows tile on the display the active window is on (or the current display).
+    func setMaxWindows(_ count: Int) {
+        let target = activeWindow().flatMap { DisplayService.display(for: $0.frame, in: displays)?.id } ?? displays.first?.id
+        guard let target else { return }
+        settings.update { $0.updateSettings(for: target) { $0.maxWindows = count } }
+        ui.notice = "Tiling up to \(count) window\(count == 1 ? "" : "s") on this display."
+    }
+
     func resetSizes(on display: DisplayID? = nil) {
         let ids = display.map { [$0] } ?? displays.map(\.id)
         settings.update { config in
