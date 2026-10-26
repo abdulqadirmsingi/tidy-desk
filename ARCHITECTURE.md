@@ -32,7 +32,11 @@ UI state (`TilingUIState`, `AppModel`) is separate from runtime window state ins
 
 ## Window discovery flow
 
-`WindowDiscoveryService.discover` lists regular, non-hidden apps (excluding itself), reads each app's `AXWindows`, and keeps a registry mapping `AXUIElement` → `WindowID` using `CFEqual` (no private window-number API). A window is eligible if it is an `AXWindow` / `AXStandardWindow`, not minimized, full-screen or modal, has settable position and size, belongs to a non-excluded app, and has a usable frame. Ineligible but existing windows (minimized, hidden app, other Space) are reported as *alive* so their order slot is retained; dead elements are pruned by probing. Every `AXElement` has a 0.5 s messaging timeout so a hung app cannot block the main thread for long.
+`WindowDiscoveryService.discover` lists regular, non-hidden apps (excluding itself), reads each app's `AXWindows`, and keeps a registry mapping `AXUIElement` → `WindowID` using `CFEqual` (no private window-number API). A window is eligible if it is an `AXWindow` / `AXStandardWindow`, not minimized, full-screen or modal, has settable position and size, belongs to a non-excluded app, and has a usable frame. Ineligible but existing windows (minimized, hidden app, other Space) are reported as *alive* so their order slot is retained; dead elements are pruned by probing. Every `AXElement` (app, window, and observer-delivered) gets a 0.5 s messaging timeout in its initializer, because the timeout is per element. If a window read times out, the rest of that app's windows are skipped for the pass and their order slots are kept.
+
+## Catching new windows
+
+Observer registration can fail while an app is still starting. `WindowLifecycleMonitor.sync` keeps such registrations pending and retries them on later passes; the coordinator schedules those passes on a finite `RetrySchedule` (0.5, 1, 2, 4, 8 s), then stops. Independently, a focus change onto a window the registry has never seen triggers a reconcile, so a missed creation event is healed as soon as the window is used. `WindowEligibility` (Core) is the single definition of which windows may be tiled, and *Explain Active Window* reports its verdict in plain language without titles.
 
 ## Event handling flow
 
@@ -46,7 +50,7 @@ UI state (`TilingUIState`, `AppModel`) is separate from runtime window state ins
 
 ## Reconciliation and placement
 
-`reconcile` = up to 3 passes of: refresh displays → discover → update order (`WindowOrder.reconcile`) → plan each display (`TilePlanner`) → apply (`WindowPlacementService.place`: set position, set size, re-set position, read back). A refused resize is compared with the request by `ConstraintLearner`; a learned minimum is stored (silently, no re-trigger) and the pass repeats. Each window has a two-attempt budget; after that it is *stubborn*, excluded from planning and left floating until the user changes settings or chooses *Arrange Now*. All of this runs on the main actor so a plan is always applied against the state it was computed from.
+`reconcile` = up to 3 passes of: refresh displays → discover → update order (`WindowOrder.reconcile`) → plan each display (`TilePlanner`) → apply (`WindowPlacementService.place`: set position, set size, re-set position, read back). A size that does not match the request is not judged at once, because many apps apply it a moment later: after a 180 ms settle the frame is re-read, and only a mismatch larger than the snap allowance (24 pt, since terminals round to whole character cells) is learned as a minimum, capped at 75% of the display so a stale reading can never exclude a window from every layout; saved minimums beyond that cap are ignored when planning. A learned minimum is stored silently (no re-trigger) and a reconcile follows. Retry limits live in the pure, tested `PlacementBudget`: each window gets two refusals, and an app that moves itself more than four times in ten seconds without a mouse gesture is treated the same. After that the window is *stubborn*, excluded from planning and left floating until the user changes settings or chooses *Arrange Now*. All of this runs on the main actor so a plan is always applied against the state it was computed from.
 
 First-seen frames are remembered per window so *Restore Previous Arrangement* can put windows back (and pause tiling).
 
@@ -67,7 +71,27 @@ Layouts are described as **columns of stacked tiles** in a landscape frame:
 
 ## Persistence
 
-`config.json` in `~/Library/Application Support/<AppName>/`, written atomically, debounced 0.4 s, flushed on quit. Fields decode with defaults, so older files load after upgrades. `ConfigurationMigration` has an (currently empty) step list keyed by schema version; newer-than-supported files are never overwritten; unreadable files are moved aside as `config.json.corrupt-<timestamp>`. Nothing about windows (titles, references, frames) is stored — only bundle identifiers of excluded apps and learned minimum sizes.
+`config.json` in `~/Library/Application Support/<AppName>/`, written atomically, debounced 0.4 s, flushed on quit. Fields decode with defaults, so older files load after upgrades. `ConfigurationMigration` has an (currently empty) step list keyed by schema version; newer-than-supported files are never overwritten or deleted (`save` throws, the UI says changes won't be saved) unless the user explicitly resets, in which case the file is first moved aside as `config.json.newer-<ms>`; unreadable or invalid files (including ones that exist but cannot be read) are moved aside under a unique `config.json.corrupt-<ms>` name, the newest 5 are kept, and the UI message says whether the backup actually succeeded. Nothing about windows (titles, references, frames) is stored — only bundle identifiers of excluded apps and learned minimum sizes.
+
+## Menu bar item and panel
+
+`StatusItemController` owns the `NSStatusItem` (AppKit, not SwiftUI's `MenuBarExtra`) so opening, dismissing and anchoring the panel is fully controlled: left-click shows `MenuPanelView` in a non-activating glass panel anchored below the icon (so the app you were using stays active and per-app controls act on it), right-click shows a small menu, and a click right after the panel closed itself is treated as the click that closed it. The icon symbol comes from the tested `MenuBarSymbol`, refreshed through Observation. The app declares only an inert scene; `showInDock` switches the activation policy between accessory and regular at runtime, and `applicationShouldHandleReopen` opens Settings.
+
+## Suggestions
+
+When tiling is not automatic, the app speaks up instead of staying silent. `SuggestionPolicy` (Core, tested) decides when: *tidy up* when a new window appears while tiling is off and at least two windows exist (45 s cooldown, 15 min of silence after "Not Now"), and *grant access* when Accessibility is missing (at most every 10 minutes). The coordinator raises it (a paused-mode scan is read-only: it only looks, and keeps observers attached so new windows are noticed), and `ToastPresenter` shows a non-activating glass toast just below the menu bar, which on notched Macs is below the notch. Nothing is shown while the welcome tour is open. Choosing *Always Arrange Automatically* enables tiling and completes onboarding.
+
+## Command palette and switcher
+
+Both are transient glass panels shown by `FloatingPanelPresenter`: a non-activating key panel, so the previously active window stays active and commands act on it, closed on focus loss. Palette search is `CommandSearch` (Core, tested): prefix > word-start > substring > keyword > letters-in-order, every word must match. Commands are every `ShortcutAction` (title, keywords, current shortcut) plus Settings and the welcome tour. Switcher keyboard movement is `SwitcherNavigation` (Core, tested): left/right walk reading order, up/down jump between displays keeping the column. Default shortcuts are Control + Option plus a key reachable with the other hand; the palette is ⌃⌥K.
+
+## Onboarding
+
+`OnboardingFlow` (Core, tested) owns step order and skips the permission steps once access is granted; if access arrives while the user is on the grant page, the tour moves on by itself. The views (`Features/Onboarding`) only present it: a frosted window (`NSVisualEffectView` behind-window blur, transparent title bar), `glassPanel()`/`glassButton()` helpers that use Liquid Glass on macOS 26 and frosted material before it, and `TilingDemo`, which animates placeholder windows through the real `TilePlanner`. Reduce Motion stops the animations and slides, and Reduce Transparency replaces glass with plain backgrounds.
+
+## Pause conditions
+
+`TilingStatus.resolve` (Core, tested) decides whether windows may be touched, in priority order: no permission → asleep/locked → Stage Manager on → user pause / onboarding incomplete. Stage Manager is read from the `com.apple.WindowManager` `GloballyEnabled` preference. There is no change notification, so it is re-checked on reconciles and on every focus change; tiling resumes by itself once it is off. While paused for it, a notice explains why.
 
 ## Permission handling
 

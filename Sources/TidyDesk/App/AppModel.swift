@@ -27,9 +27,16 @@ final class AppModel {
     private(set) var shortcutFailures: [ShortcutAction: GlobalShortcutCenter.Failure] = [:]
     private(set) var loginItemError: String?
     var selectedDisplayID: DisplayID?
+    /// The app the user was working in when the menu panel opened.
+    private(set) var frontApp: (name: String, bundleID: String?, icon: NSImage?)?
 
     @ObservationIgnored private let shortcutCenter = GlobalShortcutCenter()
     @ObservationIgnored private let switcher = SwitcherController()
+    @ObservationIgnored private let palettePresenter = FloatingPanelPresenter()
+    @ObservationIgnored private let toast = ToastPresenter()
+    @ObservationIgnored private var statusItem: AnyObject?
+    /// How the menu bar icon is created; tests substitute a stub so no real icon is added to the menu bar.
+    @ObservationIgnored var makeStatusItem: (AppModel) -> AnyObject = { StatusItemController(model: $0) }
 
     init() {
         let url = ConfigurationStore.defaultFileURL(appFolderName: Branding.name)
@@ -51,8 +58,11 @@ final class AppModel {
             self?.coordinator.settingsChanged(old: old, new: new)
             if old.shortcutOverrides != new.shortcutOverrides { self?.registerShortcuts() }
             if old.appearance.mode != new.appearance.mode { Self.applyAppearance(new.appearance.mode) }
+            if old.showInDock != new.showInDock { self?.applyDockPolicy() }
         }
         Self.applyAppearance(settings.configuration.appearance.mode)
+        installMenuBar()
+        coordinator.onSuggestion = { [weak self] in self?.present($0) }
         shortcutCenter.onAction = { [weak self] in self?.perform($0) }
         registerShortcuts()
         coordinator.start()
@@ -70,11 +80,111 @@ final class AppModel {
     // MARK: Windows
 
     func showSettings() { presenter.show(.settings, model: self) }
-    func showOnboarding() { presenter.show(.onboarding, model: self) }
+    func showOnboarding(at step: OnboardingStep = .welcome) { presenter.show(.onboarding, model: self, startAt: step) }
+
+    /// Remembers which app is in front so the panel can offer per-app controls for it.
+    func captureFrontmostApp() {
+        guard let app = NSWorkspace.shared.frontmostApplication,
+              app.processIdentifier != ProcessInfo.processInfo.processIdentifier, app.activationPolicy == .regular
+        else { return }
+        frontApp = (app.localizedName ?? "App", app.bundleIdentifier, app.icon)
+    }
+
+    /// Creates the menu bar icon and applies the Dock preference. Kept separate so it can be tested.
+    func installMenuBar() {
+        applyDockPolicy()
+        if statusItem == nil { statusItem = makeStatusItem(self) }
+    }
+
+    var hasMenuBarItem: Bool { statusItem != nil }
+
+    /// A menu bar agent by default; optionally also shown in the Dock.
+    private func applyDockPolicy() {
+        let wantsDock = settings.configuration.showInDock
+        guard let app = NSApp else { return }  // absent only when running under tests
+        app.setActivationPolicy(wantsDock ? .regular : .accessory)
+        if wantsDock { app.activate() }
+    }
 
     func showSwitcher() {
         let groups = coordinator.switcherGroups()
         switcher.show(groups: groups) { [weak self] id in self?.coordinator.activate(id) }
+    }
+
+    /// Shows a suggestion unless the welcome tour is open, which already covers the same ground.
+    private func present(_ suggestion: SuggestionKind) {
+        guard !presenter.isShown(.onboarding) else { return }
+        let dismiss = { [weak self] in
+            self?.toast.dismiss()
+            self?.coordinator.suggestionDismissed(suggestion)
+        }
+        let actions: SuggestionActions
+        switch suggestion {
+        case .grantAccess:
+            actions = SuggestionActions(
+                primary: { [weak self] in
+                    guard let self else { return }
+                    toast.dismiss()
+                    presenter.show(.onboarding, model: self, startAt: .grant)
+                },
+                secondary: nil, dismiss: dismiss)
+        case .tidyUp:
+            actions = SuggestionActions(
+                primary: { [weak self] in
+                    self?.toast.dismiss()
+                    self?.settings.update { $0.hasCompletedOnboarding = true; $0.isTilingEnabled = true }
+                    self?.coordinator.arrangeNow()
+                },
+                secondary: { [weak self] in
+                    self?.toast.dismiss()
+                    self?.coordinator.arrangeNow()
+                },
+                dismiss: dismiss)
+        }
+        toast.show(SuggestionToastView(kind: suggestion, actions: actions), onTimeout: {})
+    }
+
+    func showCommandPalette() {
+        let shortcuts = settings.configuration.shortcuts
+        var commands = ShortcutAction.allCases.map { action in
+            PaletteCommand(
+                item: CommandItem(
+                    id: action.rawValue, title: action.title, keywords: action.keywords,
+                    shortcutText: shortcuts.bindings[action]?.display),
+                run: { [weak self] in self?.perform(action) })
+        }
+        commands += [
+            PaletteCommand(
+                item: CommandItem(id: "settings", title: "Open Settings", keywords: ["preferences", "options", "configure"]),
+                run: { [weak self] in self?.showSettings() }),
+            PaletteCommand(
+                item: CommandItem(
+                    id: "explain", title: "Explain Active Window", keywords: ["why", "not tiled", "floating", "debug"]),
+                run: { [weak self] in self?.showWindowExplanation() }),
+            PaletteCommand(
+                item: CommandItem(id: "tour", title: "Show Welcome Tour", keywords: ["onboarding", "help", "intro"]),
+                run: { [weak self] in self?.showOnboarding() }),
+        ]
+        let model = PaletteModel(commands: commands)
+        palettePresenter.present(
+            CommandPaletteView(
+                model: model,
+                onRun: { [weak self] command in
+                    // Close first so the previously active window is the target again.
+                    self?.palettePresenter.dismiss()
+                    Task { @MainActor in command.run() }
+                },
+                onDismiss: { [weak self] in self?.palettePresenter.dismiss() }),
+            size: NSSize(width: 560, height: 400), anchor: .upper)
+    }
+
+    func showWindowExplanation() {
+        let alert = NSAlert()
+        alert.messageText = "Why isn’t this window tiled?"
+        alert.informativeText = coordinator.explainActiveWindow()
+        alert.addButton(withTitle: "OK")
+        NSApp.activate()
+        alert.runModal()
     }
 
     func completeOnboarding() {
@@ -107,6 +217,11 @@ final class AppModel {
         case .noPeek: coordinator.toggleNoPeek()
         case .cleanSpace: coordinator.toggleCleanSpace()
         case .windowSwitcher: showSwitcher()
+        case .commandPalette: showCommandPalette()
+        case .oneWindow: coordinator.setMaxWindows(1)
+        case .twoWindows: coordinator.setMaxWindows(2)
+        case .threeWindows: coordinator.setMaxWindows(3)
+        case .fourWindows: coordinator.setMaxWindows(4)
         case .growTile: coordinator.adjustActiveTile(grow: true)
         case .shrinkTile: coordinator.adjustActiveTile(grow: false)
         case .resetSizes: coordinator.resetSizes()

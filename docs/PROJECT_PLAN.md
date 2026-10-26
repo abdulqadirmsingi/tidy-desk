@@ -32,7 +32,7 @@ Menu-bar only · automatic arrangement · usable window sizes · independent lay
 - No public Space identification → per-Space order is *best effort* (windows on other Spaces are not enumerated; known-alive windows keep their order slot). Documented, not claimed perfect.
 - Stage Manager has no public query API; detected through the `com.apple.WindowManager` `GloballyEnabled` preference (read-only). If on, tiling is paused with an explanation.
 - Some apps refuse resizing (fixed-size windows, Electron quirks) → detected, learned, floated.
-- Modifier-drag swap through a global event tap would need Input Monitoring; instead, **plain drag-and-drop onto another tile swaps** and shortcuts/menu cover the rest.
+- ⌘-drag swap works without an event tap or Input Monitoring: the ⌘ state is read from `NSEvent.modifierFlags` while a window drag (seen through Accessibility move events) is in progress. A plain drag floats the window.
 - No Peek / Clean Space: implemented with click-through overlay windows ordered directly beneath the active window (window numbers matched by bounds via `CGWindowListCopyWindowInfo`, which needs no Screen Recording permission when titles are not read). Best effort; z-order above the active window is not controllable.
 - Mac App Store: App Sandbox forbids controlling other apps' windows → Developer ID distribution only.
 

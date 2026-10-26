@@ -8,9 +8,7 @@ extension TilingCoordinator {
     // MARK: Tiling control
 
     func arrangeNow() {
-        stubborn.removeAll()
-        attempts.removeAll()
-        unsolicitedEvents.removeAll()
+        budget.reset()
         ui.notice = nil
         reconcile(manual: true)
     }
@@ -36,9 +34,17 @@ extension TilingCoordinator {
 
     // MARK: Active window
 
+    /// The focused window of the frontmost app, even if it is not tileable.
+    private func focusedWindowElement() -> (app: NSRunningApplication, element: AXElement)? {
+        guard let app = NSWorkspace.shared.frontmostApplication, app.processIdentifier != ownPID,
+              let element = AXElement.application(pid: app.processIdentifier).element(kAXFocusedWindowAttribute)
+        else { return nil }
+        return (app, element)
+    }
+
     func updateActiveWindow() {
         guard let app = NSWorkspace.shared.frontmostApplication, app.processIdentifier != ownPID else { return }
-        let focused = AXElement.application(pid: app.processIdentifier).element(kAXFocusedWindowAttribute)
+        let focused = focusedWindowElement()?.element
         lastActiveWindow = focused.flatMap { discovery.window(for: $0) }.flatMap { tracked[$0] != nil ? $0 : nil }
     }
 
@@ -50,11 +56,21 @@ extension TilingCoordinator {
     }
 
     func focusChanged() {
+        refreshStatusIfChanged()
+        if ui.status == .needsPermission { suggest(.init(status: .needsPermission)) }
+        // A focused window we have never seen is a new window whose creation event we missed
+        // (for example an app that was still starting). Pull it into the layout.
+        if let focused = focusedWindowElement(), discovery.window(for: focused.element) == nil,
+           focused.element.string(kAXRoleAttribute) == kAXWindowRole
+        {
+            scheduleReconcile()
+        }
         updateActiveWindow()
         if let id = lastActiveWindow, focus.handle(.anotherWindowActivated(id)) {
             exitPresentationModes()
             scheduleReconcile()
         }
+        syncUI()
         refreshOverlays()
     }
 
@@ -68,6 +84,26 @@ extension TilingCoordinator {
             }
         }
         return nil
+    }
+
+    /// Plain-language reason the focused window is or isn't tiled. Contains no window title.
+    func explainActiveWindow() -> String {
+        guard let focused = focusedWindowElement() else {
+            return "Click a window first, then ask again."
+        }
+        let appName = focused.app.localizedName ?? "This app"
+        let bundleID = focused.app.bundleIdentifier
+        let id = discovery.window(for: focused.element)
+        var role: PlacementRole?
+        for plan in lastPlans.values {
+            if let id, let item = plan.placements.first(where: { $0.id == id }) { role = item.role }
+        }
+        return WindowExplanation.describe(
+            appName: appName, ineligibility: WindowEligibility.evaluate(discovery.traits(of: focused.element)),
+            isExcluded: bundleID.map { settings.configuration.excludedBundleIDs.contains($0) } ?? false,
+            isUserFloating: id.map { userFloating.contains($0) } ?? false,
+            isStubborn: id.map { budget.isStubborn($0) } ?? false,
+            learnedMinimum: bundleID.flatMap { settings.configuration.learnedMinimums[$0]?.size }, role: role)
     }
 
     // MARK: Order and displays
@@ -97,9 +133,19 @@ extension TilingCoordinator {
     }
 
     func toggleFloatActive() {
-        guard let window = activeWindow() else { return }
-        if userFloating.remove(window.id) == nil { userFloating.insert(window.id) }
+        guard let window = activeWindow() else {
+            ui.notice = "Click a window first, then float or tile it."
+            return
+        }
+        toggleFloat(window.id)
+    }
+
+    /// A floating window is left exactly where the user put it; tiling it again returns it to its slot.
+    func toggleFloat(_ id: WindowID) {
+        if userFloating.remove(id) == nil { userFloating.insert(id) }
+        ui.notice = nil
         reconcile()
+        syncUI()
     }
 
     func cycleStack() {
@@ -141,6 +187,14 @@ extension TilingCoordinator {
                 display.weights = TileWeights(primary: primary, secondary: secondary)
             }
         }
+    }
+
+    /// Sets how many windows tile on the display the active window is on (or the current display).
+    func setMaxWindows(_ count: Int) {
+        let target = activeWindow().flatMap { DisplayService.display(for: $0.frame, in: displays)?.id } ?? displays.first?.id
+        guard let target else { return }
+        settings.update { $0.updateSettings(for: target) { $0.maxWindows = count } }
+        ui.notice = "Tiling up to \(count) window\(count == 1 ? "" : "s") on this display."
     }
 
     func resetSizes(on display: DisplayID? = nil) {

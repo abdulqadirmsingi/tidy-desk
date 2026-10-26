@@ -3,8 +3,6 @@ import TidyDeskCore
 
 /// Distinguishing the user's mouse gestures from our own writes and from app-driven changes.
 extension TilingCoordinator {
-    private static let unsolicitedWindow: TimeInterval = 10
-    private static let maxUnsolicitedPerWindow = 4
     private static let gestureSettleDelay: Duration = .milliseconds(80)
 
     func handleGeometry(_ element: AXElement) {
@@ -19,17 +17,13 @@ extension TilingCoordinator {
         }
         if NSEvent.pressedMouseButtons & 1 != 0 {
             pendingGestures.insert(id)
+            if NSEvent.modifierFlags.contains(.command) { swapGestures.insert(id) }
             installMouseMonitor()
             return
         }
         // Not our write and not a mouse gesture: an app moved itself. Allow a few corrections,
         // then stop so we never fight it.
-        let now = Date()
-        var recent = (unsolicitedEvents[id] ?? []).filter { now.timeIntervalSince($0) < Self.unsolicitedWindow }
-        recent.append(now)
-        unsolicitedEvents[id] = recent
-        if recent.count > Self.maxUnsolicitedPerWindow {
-            stubborn.insert(id)
+        if budget.recordUnsolicited(id) {
             ui.notice = "A window keeps moving itself and was left floating."
         }
         scheduleReconcile()
@@ -57,47 +51,61 @@ extension TilingCoordinator {
 
     private func finishGestures() {
         let ids = pendingGestures
+        let swapIDs = swapGestures
+        let commandHeldNow = NSEvent.modifierFlags.contains(.command)
         pendingGestures = []
-        var changed = false
-        for id in ids { changed = finishGesture(id) || changed }
-        _ = changed
+        swapGestures = []
+        for id in ids { _ = finishGesture(id, swapHeld: swapIDs.contains(id) || commandHeldNow) }
         reconcile()
     }
 
-    /// Resize → update tile weights. Move → swap with the tile dropped on, or move displays.
+    /// Plain drag places a window freely (it floats); ⌘-drag swaps or moves it between tiles/displays;
+    /// resizing an edge adapts the neighbours; tiny nudges snap back.
     /// Returns true if order or settings changed.
-    private func finishGesture(_ id: WindowID) -> Bool {
+    private func finishGesture(_ id: WindowID, swapHeld: Bool) -> Bool {
         guard let window = tracked[id], let frame = window.element.frame,
               let (displayID, item) = placement(of: id),
               let target = item.frame, case let .tile(currentTile) = item.role,
               let plan = lastPlans[displayID], let display = displays.first(where: { $0.id == displayID })
         else { return false }
-        if frame.isApproximatelyEqual(to: target) { return false }
 
         let current = settings.configuration.settings(for: displayID)
-        if !frame.hasApproximateSize(of: target) {
+        switch GestureClassifier.classify(target: target, final: frame, swapModifierHeld: swapHeld) {
+        case .unchanged, .snapBack:
+            return false
+        case .float:
+            userFloating.insert(id)
+            ui.notice = "\(window.appName) now floats where you put it. Hold ⌘ while dragging to swap tiles, or use Float Active Window to tile it again."
+            return true
+        case .resize:
             let weights = RatioInference.weights(
                 afterResizing: currentTile, to: frame, oldFrames: plan.tileFrames, kind: current.layout,
                 area: display.usableFrame, margin: current.margin, spacing: current.spacing, current: current.weights)
-            guard weights != current.weights else { return false }
+            guard weights != current.weights else {
+                // The neighbours cannot absorb this resize (single window, or an edge nothing shares).
+                // Snapping back would feel like the window can't be resized; float it instead.
+                let change = max(abs(frame.width - target.width), abs(frame.height - target.height))
+                guard change > TilingTuning.floatOnResizeThreshold else { return false }
+                userFloating.insert(id)
+                ui.notice = "\(window.appName) is now floating because the layout can’t take that size. Use Float Active Window to tile it again."
+                return true
+            }
             settings.update(silent: true) { $0.updateSettings(for: displayID) { $0.weights = weights } }
             return true
+        case .swapOrMove:
+            let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+            let cursor = ScreenCoordinates.flip(NSEvent.mouseLocation, primaryHeight: primaryHeight)
+            guard let dropDisplay = DisplayService.display(at: cursor, in: displays) else { return false }
+            let dropTile = lastPlans[dropDisplay.id].flatMap { tileIndex(containing: cursor, in: $0.tileFrames) }
+            if dropDisplay.id == displayID {
+                guard let dropTile, dropTile != currentTile,
+                      let owner = plan.placements.first(where: { $0.role == .tile(dropTile) })
+                else { return false }
+                return order.swap(id, owner.id)
+            }
+            order.move(id, to: dropDisplay.id, at: dropTile)
+            return true
         }
-
-        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
-        let cursor = ScreenCoordinates.flip(NSEvent.mouseLocation, primaryHeight: primaryHeight)
-        guard let dropDisplay = DisplayService.display(at: cursor, in: displays) else { return false }
-        let dropPlan = lastPlans[dropDisplay.id]
-        let dropTile = dropPlan.flatMap { tileIndex(containing: cursor, in: $0.tileFrames) }
-
-        if dropDisplay.id == displayID {
-            guard let dropTile, dropTile != currentTile,
-                  let owner = plan.placements.first(where: { $0.role == .tile(dropTile) })
-            else { return false }
-            return order.swap(id, owner.id)
-        }
-        order.move(id, to: dropDisplay.id, at: dropTile)
-        return true
     }
 
     private func placement(of id: WindowID) -> (DisplayID, Placement)? {

@@ -45,7 +45,7 @@ The opt-in test needs the host that runs `swift test` (Terminal, Xcode) to be li
 
 ## Local development signing
 
-`scripts/build-app.sh` signs ad-hoc by default (`-`). Ad-hoc binaries have no stable identity, so macOS treats each rebuild as a new app and may drop the Accessibility grant. For a stable identity use your Apple Development certificate:
+`scripts/build-app.sh` now signs with the Apple Development certificate whose name contains your `git config user.email` when one exists (it prints which), and falls back to ad-hoc (`-`) otherwise. Ad-hoc binaries have no stable identity, so macOS treats each rebuild as a new app and drops the Accessibility grant. To pick a certificate yourself, or to force ad-hoc with `SIGN_IDENTITY="-"`:
 
 ```bash
 security find-identity -v -p codesigning        # list identities
@@ -53,6 +53,14 @@ SIGN_IDENTITY="Apple Development: Your Name (TEAMID)" scripts/build-app.sh --run
 ```
 
 Local development signing (Apple Development) is for running on your own Mac. **Distribution** needs a *Developer ID Application* certificate plus notarization — see [RELEASE.md](RELEASE.md). No certificates or credentials are ever stored in the repo.
+
+### Stable signing without typing it every time
+
+Copy `Config/local.env.example` to `Config/local.env` (git-ignored) and set `SIGN_IDENTITY` once; `scripts/build-app.sh` reads it automatically. `security find-identity -v -p codesigning` lists your identities.
+
+### "It's switched on in System Settings but the app says no access"
+
+The grant is tied to the code signature. After a rebuild with a different signature (any ad-hoc build) the old entry looks on but doesn't apply. The app now detects the wait and offers **Reset Permission and Try Again** (runs `tccutil reset Accessibility <bundle id>`, which only affects this app). Manually: remove the entry with **−** in System Settings, relaunch, allow again. Signing with a stable identity avoids it.
 
 ## Conventions
 

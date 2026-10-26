@@ -47,6 +47,11 @@ private struct GeneralSettings: View {
                 }
                 if let error = model.loginItemError { Text(error).font(.callout).foregroundStyle(.red) }
             }
+            Section("Appearance in macOS") {
+                Toggle("Also show in the Dock", isOn: settings.binding(\.showInDock))
+                Text("\(Branding.name) always lives in the menu bar. Turn this on if you find the icon hard to spot; clicking the Dock icon opens Settings.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
             Section("Arrangement") {
                 Button("Restore Previous Arrangement") { model.coordinator.restorePreviousArrangement() }
                     .disabled(!model.ui.canRestorePreviousArrangement)
@@ -124,7 +129,7 @@ private struct LayoutSettings: View {
                 LayoutPreview(settings: model.settings.configuration.defaultDisplay)
             }
             Section {
-                Text("Drag a window’s edge to resize its tile; neighbours adapt. Drop a window on another tile to swap them.")
+                Text("Drag a window’s edge to resize its tile; neighbours adapt. Hold ⌘ while dragging a window onto another tile to swap them; a plain drag leaves the window floating where you drop it.")
                     .font(.callout).foregroundStyle(.secondary)
             }
         }

@@ -50,6 +50,12 @@ final class WindowDiscoveryService {
         for app in apps where !app.isHidden {
             let appElement = AXElement.application(pid: app.processIdentifier)
             for element in appElement.elements(kAXWindowsAttribute) {
+                // One timed-out read means the app is hung; skip its remaining windows this pass
+                // instead of paying the timeout for every attribute of every window.
+                if element.probe() == .cannotComplete {
+                    Log.lifecycle.debug("App not responding; skipped for this pass")
+                    break
+                }
                 let id = identity(for: element, pid: app.processIdentifier)
                 seenThisPass.insert(id)
                 result.alive.insert(id)
@@ -72,17 +78,17 @@ final class WindowDiscoveryService {
         return result
     }
 
+    func traits(of element: AXElement) -> WindowTraits {
+        WindowTraits(
+            role: element.string(kAXRoleAttribute), subrole: element.string(kAXSubroleAttribute),
+            isMinimized: element.bool(kAXMinimizedAttribute), isFullScreen: element.bool("AXFullScreen"),
+            isModal: element.bool(kAXModalAttribute), canMove: element.isSettable(kAXPositionAttribute),
+            canResize: element.isSettable(kAXSizeAttribute), hasUsableFrame: element.frame != nil)
+    }
+
     /// Frame of a window if it may be tiled, nil otherwise.
     private func eligibleFrame(of element: AXElement) -> CGRect? {
-        guard element.string(kAXRoleAttribute) == kAXWindowRole,
-              element.string(kAXSubroleAttribute) == kAXStandardWindowSubrole,
-              element.bool(kAXMinimizedAttribute) != true,
-              element.bool("AXFullScreen") != true,
-              element.bool(kAXModalAttribute) != true,
-              element.isSettable(kAXPositionAttribute),
-              element.isSettable(kAXSizeAttribute)
-        else { return nil }
-        return element.frame
+        WindowEligibility.evaluate(traits(of: element)) == nil ? element.frame : nil
     }
 
     private func identity(for element: AXElement, pid: pid_t) -> WindowID {

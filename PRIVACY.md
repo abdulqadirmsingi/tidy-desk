@@ -24,7 +24,7 @@ Only **Accessibility**. It is required to move and resize other apps' windows. T
 - Learned minimum sizes per bundle identifier.
 - Shortcut overrides and appearance settings.
 
-`UserDefaults` is not used. Login-item state is held by macOS (`SMAppService`).
+If the file cannot be read it is moved aside as `config.json.corrupt-<timestamp>` (the newest 5 are kept) so it can be inspected; these hold the same kind of data as the config. `UserDefaults` is not used. Login-item state is held by macOS (`SMAppService`).
 
 Never stored: window titles, document names or contents, screenshots, keystrokes, window or AX references, process ids.
 

@@ -8,9 +8,10 @@ A native macOS menu bar app that automatically tiles your windows. Swift, SwiftU
 
 - Tiles eligible windows per display with **Grid** or **Columns** (1–4 windows per display), re-arranging when windows open, close, minimize, restore, hide, or move between displays.
 - Extra windows either **stack** in the last tile or **float** until space frees up.
-- Drag a tile's edge to resize (neighbours adapt); drop a window on another tile to swap; keyboard shortcuts for swap, move to another display, grow/shrink, reset.
+- Drag a tile's edge to resize (neighbours adapt); **hold ⌘ while dragging** a window onto another tile to swap (a plain drag places the window freely and leaves it floating); keyboard shortcuts for swap, move to another display, grow/shrink, reset.
 - Learns minimum sizes of apps that refuse to shrink and floats windows that can't fit.
 - **Focus mode**, **No Peek** (dims windows beneath the active one), **Clean Space** (clean backdrop behind one window), a keyboard-driven **window switcher**, active-window border/glow.
+- *Explain Active Window* in the menu says in plain words why a window is or isn't tiled.
 - Per-display settings that survive unplugging a display; "restore previous arrangement"; pause at any time.
 - Entirely local: no analytics, screenshots, or network access. See [PRIVACY.md](PRIVACY.md).
 
@@ -35,11 +36,19 @@ open Package.swift              # develop in Xcode
 2. Click **Open Accessibility Settings**, then enable TidyDesk under *System Settings → Privacy & Security → Accessibility*.
 3. If the menu bar still shows a warning icon after a few seconds, quit and reopen the app.
 
-Ad-hoc signed builds get a new identity on every rebuild, so macOS may ask you to grant access again. Sign with your Apple Development certificate to keep it stable: `SIGN_IDENTITY="Apple Development: …" scripts/build-app.sh` (see [DEVELOPMENT.md](DEVELOPMENT.md)).
+The build script signs with the Apple Development certificate matching your git email when you have one, which keeps the grant across rebuilds. Ad-hoc builds (no matching certificate) get a new identity on every rebuild, so macOS asks again; choose a certificate explicitly with: `SIGN_IDENTITY="Apple Development: …" scripts/build-app.sh` (see [DEVELOPMENT.md](DEVELOPMENT.md)).
 
-## Default shortcuts (Control + Option)
+## The menu bar panel, Dock and finding the app
 
-`A` arrange now · `T` pause/resume · `L` Grid/Columns · `Z` restore previous · `←/→` swap with previous/next tile · `D` / `⇧D` move to next/previous display · `F` Focus · `N` No Peek · `C` Clean Space · `Tab` window switcher · `=` / `-` grow/shrink tile · `0` reset sizes · `↑` cycle stack · `G` float/tile active window. All are configurable in Settings → Shortcuts.
+Click the menu bar icon for a glass panel: status at a glance, the **Automatic tiling** switch, layout, a **Tile <current app>** toggle, *Float this window*, *Why isn’t this window tiled?*, Arrange / Undo / Switcher / Commands, and the Focus / No Peek / Clean Space modes. Right-click the icon for Settings and Quit. The icon changes with state (grid = tiling, pause = off, triangle = needs access). If it's hard to spot among other icons, turn on **Settings → General → Also show in the Dock**. Launching the app again (Spotlight, Finder or the Dock) always opens Settings.
+
+## Shortcuts and the command palette
+
+Remember one: **⌃⌥K** opens the command palette. Type a few letters ("max", "pause", "undo", "monitor") and press Return; it lists every command with its shortcut. The rest are Control + Option plus a key you can reach with your other hand:
+
+`↩` arrange now · `P` pause/resume · `L` Grid/Columns · `U` restore previous · `←` `→` swap with previous/next tile · `[` `]` move to previous/next display · `M` Focus · `N` No Peek · `H` Clean Space · `Tab` window switcher · `=` `-` grow/shrink tile · `0` reset sizes · `↑` cycle stack · `↓` float/tile active window · **⌃⌥⌘1–4** tile 1–4 windows per display.
+
+All are configurable in Settings → Shortcuts. The window switcher (⌃⌥Tab) groups windows by display; use arrows or Tab to move, **1–9** to jump, Return to switch, Esc to close.
 
 ## Current limitations
 
@@ -47,7 +56,7 @@ Ad-hoc signed builds get a new identity on every rebuild, so macOS may ask you t
 - **Stage Manager:** detected through a read-only preference; tiling pauses while it's on.
 - **Minimum sizes:** no public API reports them; they are learned from refused resizes.
 - **No Peek / Clean Space:** overlays are placed directly beneath the active window; windows above it in z-order are not affected.
-- **Modifier-drag swapping** would need Input Monitoring; plain drag-and-drop onto a tile and shortcuts are used instead.
+- **Dragging:** ⌘-drag swaps tiles; a plain drag floats the window where you drop it (use *Float Active Window* to tile it again). ⌘ is read when you release the mouse, so keep it held until you let go.
 - **Mac App Store** is not possible (sandbox forbids controlling other apps' windows). Distribute with Developer ID — [RELEASE.md](RELEASE.md).
 - No auto-updater. Updates are manual.
 

@@ -62,6 +62,19 @@ struct AppIntegrationTests {
         #expect(ShortcutMap().conflicts.isEmpty)
     }
 
+    @Test func discoveryReturnsPromptlyAndSafelyWithoutPermission() throws {
+        try #require(!AXIsProcessTrusted(), "Only meaningful when Accessibility is not granted")
+        let started = Date()
+        let result = WindowDiscoveryService().discover(excludedBundleIDs: [])
+        #expect(result.eligible.isEmpty)
+        #expect(Date().timeIntervalSince(started) < 5)
+    }
+
+    @Test func wrappedElementsAreMessagingTimeoutBounded() {
+        // The timeout has no public getter, so this guards the constant that every wrapper applies.
+        #expect(AXElement.messagingTimeout > 0 && AXElement.messagingTimeout <= 1)
+    }
+
     @Test func loginItemServiceReportsAState() {
         _ = LoginItemService().state
     }
@@ -88,5 +101,147 @@ struct AccessibilityIntegrationTests {
         let target = CGRect(x: 120, y: 160, width: 700, height: 450)
         let actual = try #require(try? WindowPlacementService().place(element, to: target).get())
         #expect(actual.isApproximatelyEqual(to: target, tolerance: 4))
+    }
+}
+
+/// Exercises coordinator state without Accessibility by injecting a tracked window.
+@Suite("Float toggle", .serialized)
+@MainActor
+struct FloatToggleTests {
+    private func makeCoordinator() -> TilingCoordinator {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TidyDeskFloat-\(UUID().uuidString)/config.json")
+        let settings = SettingsStore(store: ConfigurationStore(fileURL: url))
+        return TilingCoordinator(settings: settings, permission: AccessibilityPermission())
+    }
+
+    private func inject(_ coordinator: TilingCoordinator) -> WindowID {
+        let id = WindowID()
+        coordinator.tracked[id] = TrackedWindow(
+            id: id, element: AXElement(raw: AXUIElementCreateSystemWide()), pid: 1, bundleID: nil,
+            appName: "Test", frame: CGRect(x: 0, y: 0, width: 400, height: 300))
+        coordinator.lastActiveWindow = id
+        return id
+    }
+
+    @Test func togglingFloatsAndTilesTheWindowAndUpdatesUIState() {
+        let coordinator = makeCoordinator()
+        let id = inject(coordinator)
+        coordinator.syncUI()
+        #expect(coordinator.ui.activeWindowFloating == false)
+
+        coordinator.toggleFloat(id)
+        #expect(coordinator.userFloating.contains(id))
+        #expect(coordinator.ui.activeWindowFloating == true)
+        #expect(coordinator.ui.floatingCount == 1)
+
+        coordinator.toggleFloat(id)
+        #expect(!coordinator.userFloating.contains(id))
+        #expect(coordinator.ui.activeWindowFloating == false)
+    }
+
+    @Test func noActiveWindowDisablesTheToggle() {
+        let coordinator = makeCoordinator()
+        coordinator.syncUI()
+        #expect(coordinator.ui.activeWindowFloating == nil)
+    }
+}
+
+@Suite("Newer config protection (app)", .serialized)
+@MainActor
+struct NewerConfigAppTests {
+    @Test func settingsChangesDoNotClobberANewerFileAndResetBacksItUp() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("TidyDeskNewer-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("config.json")
+        let future = Data(#"{"schemaVersion":99}"#.utf8)
+        try future.write(to: url)
+
+        let store = SettingsStore(store: ConfigurationStore(fileURL: url))
+        #expect(store.loadProblem != nil)
+        store.update { $0.isTilingEnabled = false }
+        store.flush()
+        #expect(try Data(contentsOf: url) == future)
+        #expect(store.saveProblem?.contains("will not be saved") == true)
+
+        store.resetToDefaults()
+        #expect(store.saveProblem == nil)
+        let backups = try FileManager.default.contentsOfDirectory(atPath: dir.path).filter { $0.contains("newer-") }
+        #expect(backups.count == 1)
+    }
+}
+
+@Suite("Stale Accessibility grant")
+@MainActor
+struct StaleGrantTests {
+    @Test func resetTargetsOnlyAccessibilityForTheGivenApp() {
+        #expect(AccessibilityPermission.resetArguments(bundleID: "com.example.app") == ["reset", "Accessibility", "com.example.app"])
+    }
+}
+
+@Suite("Suggestions (app)", .serialized)
+@MainActor
+struct SuggestionWiringTests {
+    private func makeCoordinator() -> TilingCoordinator {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TidyDeskSuggest-\(UUID().uuidString)/config.json")
+        return TilingCoordinator(
+            settings: SettingsStore(store: ConfigurationStore(fileURL: url)), permission: AccessibilityPermission())
+    }
+
+    @Test func coordinatorRaisesEachSuggestionOnceAndHonoursNotNow() {
+        let coordinator = makeCoordinator()
+        var raised: [SuggestionKind] = []
+        coordinator.onSuggestion = { raised.append($0) }
+        let context = SuggestionPolicy.Context(status: .pausedByUser, eligibleWindowCount: 3, newWindowAppeared: true)
+
+        coordinator.suggest(context)
+        coordinator.suggest(context)
+        #expect(raised == [.tidyUp(windowCount: 3)])
+
+        coordinator.suggestionDismissed(.tidyUp(windowCount: 3))
+        coordinator.suggest(context)
+        #expect(raised.count == 1)
+    }
+
+    @Test func nothingIsSuggestedWhileTilingIsActive() {
+        let coordinator = makeCoordinator()
+        var raised = 0
+        coordinator.onSuggestion = { _ in raised += 1 }
+        coordinator.suggest(.init(status: .active, eligibleWindowCount: 4, newWindowAppeared: true))
+        #expect(raised == 0)
+    }
+}
+
+@Suite("Startup wiring", .serialized)
+@MainActor
+struct StartupWiringTests {
+    @Test func installingTheMenuBarCreatesTheIconExactlyOnce() {
+        let model = AppModel()
+        var created = 0
+        model.makeStatusItem = { _ in
+            created += 1
+            return NSObject()
+        }
+        #expect(!model.hasMenuBarItem)
+        model.installMenuBar()
+        model.installMenuBar()
+        #expect(model.hasMenuBarItem)
+        #expect(created == 1)
+    }
+
+    /// `start()` touches hot keys, observers and real windows, so it cannot run in tests. This guards the
+    /// exact regression where the icon was never created because a text edit silently did not apply.
+    @Test func startupCallsInstallMenuBar() throws {
+        let source = try String(
+            contentsOfFile: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+                .appendingPathComponent("Sources/TidyDesk/App/AppModel.swift").path,
+            encoding: .utf8)
+        let start = try #require(source.range(of: "    func start() {"))
+        let body = source[start.upperBound...].prefix { _ in true }
+        let end = body.range(of: "\n    }\n")?.lowerBound ?? body.endIndex
+        #expect(body[..<end].contains("installMenuBar()"), "AppModel.start() must create the menu bar icon")
     }
 }

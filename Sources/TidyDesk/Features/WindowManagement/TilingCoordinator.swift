@@ -6,10 +6,12 @@ enum TilingTuning {
     static let wakeSettleDelay: Duration = .seconds(1)
     /// Geometry notifications this soon after our own write are treated as echoes.
     static let ownMoveSuppression: TimeInterval = 0.7
-    /// Refusals tolerated per window before it is left floating.
-    static let maxAttemptsPerWindow = 2
     static let maxPassesPerReconcile = 3
+    /// Many apps apply a requested size a moment after returning; judge a refusal only after it settles.
+    static let settleDelay: Duration = .milliseconds(180)
     static let cleanSpaceInset = CGSize(width: 0.08, height: 0.06)
+    /// A user resize smaller than this is a nudge, not a request to float the window.
+    static let floatOnResizeThreshold: CGFloat = 24
 }
 
 struct StackKey: Hashable {
@@ -35,6 +37,7 @@ final class TilingCoordinator {
     let monitor = WindowLifecycleMonitor()
     let overlays = OverlayController()
     let ownPID = ProcessInfo.processInfo.processIdentifier
+    static let stageManagerNotice = "Stage Manager is on, so tiling is paused. Turn it off to resume."
 
     var order = WindowOrder()
     var tracked: [WindowID: TrackedWindow] = [:]
@@ -44,19 +47,30 @@ final class TilingCoordinator {
     var cleanSpaceDisplay: DisplayID?
     var noPeekActive = false
     var userFloating: Set<WindowID> = []
-    /// Windows that refused placement; excluded from planning until the user intervenes.
-    var stubborn: Set<WindowID> = []
-    var attempts: [WindowID: Int] = [:]
+    /// Caps retries; stubborn windows are excluded from planning until the user intervenes.
+    var budget = PlacementBudget()
     var originalFrames: [WindowID: CGRect] = [:]
     var expected: [WindowID: Expectation] = [:]
     var stackActive: [StackKey: WindowID] = [:]
     var stackRaised: [StackKey: WindowID] = [:]
     var pendingGestures: Set<WindowID> = []
+    /// Gestures during which ⌘ was held, meaning swap rather than place freely.
+    var swapGestures: Set<WindowID> = []
+    /// Floating windows already centred once, so we never keep moving a window we put there.
+    var centeredFloating: Set<WindowID> = []
     var mouseUpMonitor: Any?
     var lastActiveWindow: WindowID?
     var isAsleep = false
-    var unsolicitedEvents: [WindowID: [Date]] = [:]
     var preFocusFrame: CGRect?
+    /// Bounds how long we keep retrying observer registration for apps that are not ready yet.
+    var observerRetry = RetrySchedule()
+    var observersPending = false
+    var verifications: [WindowID: Task<Void, Never>] = [:]
+    /// Raised when something is worth suggesting; the app decides how to present it.
+    var onSuggestion: ((SuggestionKind) -> Void)?
+    var suggestionPolicy = SuggestionPolicy()
+    /// Window set seen by the last paused-mode scan; nil until a baseline exists.
+    var knownWindows: Set<WindowID>?
 
     private var reconcileTask: Task<Void, Never>?
 
@@ -75,6 +89,7 @@ final class TilingCoordinator {
 
     func stop() {
         reconcileTask?.cancel()
+        verifications.values.forEach { $0.cancel() }
         monitor.stop()
         removeMouseMonitor()
         overlays.removeAll()
@@ -93,8 +108,7 @@ final class TilingCoordinator {
             || old.displays.mapValues({ [$0.layout.rawValue, "\($0.maxWindows)"] })
             != new.displays.mapValues({ [$0.layout.rawValue, "\($0.maxWindows)"] })
         if layoutChanged { exitPresentationModes() }
-        stubborn.removeAll()
-        attempts.removeAll()
+        budget.reset()
         scheduleReconcile(delay: .zero)
     }
 
@@ -133,11 +147,15 @@ final class TilingCoordinator {
     }
 
     func currentStatus() -> TilingStatus {
-        if !permission.isGranted { return .needsPermission }
-        if isAsleep { return .asleep }
-        if StageManagerDetector.isEnabled { return .stageManagerOn }
         let config = settings.configuration
-        return config.isTilingEnabled && config.hasCompletedOnboarding ? .active : .pausedByUser
+        return TilingStatus.resolve(
+            permissionGranted: permission.isGranted, isAsleep: isAsleep, stageManagerOn: StageManagerDetector.isEnabled,
+            tilingEnabled: config.isTilingEnabled, onboardingComplete: config.hasCompletedOnboarding)
+    }
+
+    /// Stage Manager has no change notification, so cheap events (focus changes) re-check it.
+    func refreshStatusIfChanged() {
+        if currentStatus() != ui.status { reconcile() }
     }
 
     // MARK: Reconciliation
@@ -148,15 +166,22 @@ final class TilingCoordinator {
         reconcileTask?.cancel()
         let status = currentStatus()
         ui.status = status
+        if status == .stageManagerOn {
+            ui.notice = Self.stageManagerNotice
+        } else if ui.notice == Self.stageManagerNotice {
+            ui.notice = nil
+        }
         switch status {
         case .active: break
         case .pausedByUser where manual: break
         case .pausedByUser:
             refreshDisplays()
+            scanWhilePaused()
             syncUI()
             return
         case .needsPermission, .stageManagerOn, .asleep:
             overlays.removeAll()
+            if status == .needsPermission { suggest(.init(status: status)) }
             return
         }
 
@@ -168,6 +193,32 @@ final class TilingCoordinator {
         }
         syncUI()
         refreshOverlays()
+        retryObserversIfNeeded()
+    }
+
+    /// While tiling is off we only look (no writes): keep observers attached so new windows are noticed,
+    /// and offer to tidy up when one appears.
+    private func scanWhilePaused() {
+        let found = discoverAndTrack()
+        monitor.sync(windows: found.eligible)
+        let current = Set(found.eligible.map(\.id))
+        let appeared = knownWindows.map { !current.subtracting($0).isEmpty } ?? false
+        knownWindows = current
+        suggest(.init(status: .pausedByUser, eligibleWindowCount: current.count, newWindowAppeared: appeared))
+    }
+
+    func suggest(_ context: SuggestionPolicy.Context) {
+        if let suggestion = suggestionPolicy.evaluate(context) { onSuggestion?(suggestion) }
+    }
+
+    func suggestionDismissed(_ kind: SuggestionKind) { suggestionPolicy.noteDismissed(kind) }
+
+    private func retryObserversIfNeeded() {
+        guard observersPending else {
+            observerRetry.reset()
+            return
+        }
+        if let delay = observerRetry.next() { scheduleReconcile(delay: .milliseconds(Int(delay * 1000))) }
     }
 
     /// One discover → plan → apply cycle. Returns true if a refusal taught us something and
@@ -182,8 +233,8 @@ final class TilingCoordinator {
         }
         originalFrames = originalFrames.filter { found.alive.contains($0.key) }
         userFloating.formIntersection(found.alive)
-        stubborn.formIntersection(found.alive)
-        monitor.sync(windows: found.eligible)
+        budget.retain(alive: found.alive)
+        observersPending = monitor.sync(windows: found.eligible)
         if let focused = focus.focusedWindow, tracked[focused] == nil {
             focus.handle(.windowClosed(focused))
             cleanSpaceDisplay = nil
@@ -191,7 +242,7 @@ final class TilingCoordinator {
 
         var present: [DisplayID: [WindowID]] = [:]
         let candidates = found.eligible
-            .filter { !userFloating.contains($0.id) && !stubborn.contains($0.id) }
+            .filter { !userFloating.contains($0.id) && !budget.isStubborn($0.id) }
             .sorted { ($0.frame.minX, $0.frame.minY) < ($1.frame.minX, $1.frame.minY) }
         for window in candidates {
             if let display = DisplayService.display(for: window.frame, in: displays) {
@@ -206,7 +257,10 @@ final class TilingCoordinator {
             let visible = Set(present[display.id] ?? [])
             let ids = order.windows(on: display.id).filter { visible.contains($0) }
             let windows = ids.compactMap { tracked[$0] }.map {
-                PlannerWindow(id: $0.id, minimumSize: config.learnedMinimums[$0.bundleID ?? ""]?.size ?? .zero)
+                PlannerWindow(
+                    id: $0.id,
+                    minimumSize: ConstraintLearner.usableMinimum(
+                        learned: config.learnedMinimums[$0.bundleID ?? ""]?.size ?? .zero, usable: display.usableFrame.size))
             }
             let displaySettings = config.settings(for: display.id)
             let plan = TilePlanner.plan(windows: windows, settings: displaySettings, area: display.usableFrame)
@@ -221,13 +275,21 @@ final class TilingCoordinator {
             for item in plan.placements {
                 guard let window = tracked[item.id] else { continue }
                 if let frame = item.frame {
+                    centeredFloating.remove(window.id)
                     if !window.frame.isApproximatelyEqual(to: frame) { replan = apply(window, to: frame) || replan }
                 } else {
+                    centerOnce(window, on: display)
                     recoverIfOffscreen(window)
                 }
             }
             raiseActiveStackMembers(plan: plan, display: display.id)
         }
+        for id in budget.stubborn {
+            if let window = tracked[id], let display = DisplayService.display(for: window.frame, in: displays) {
+                centerOnce(window, on: display)
+            }
+        }
+        centeredFloating.formIntersection(found.alive)
         return replan
     }
 
@@ -240,18 +302,41 @@ final class TilingCoordinator {
             expected[window.id] = Expectation(
                 frames: [target, actual], deadline: Date().addingTimeInterval(TilingTuning.ownMoveSuppression))
             if ConstraintLearner.accepted(requested: target, actual: actual) {
-                attempts[window.id] = nil
+                budget.recordSuccess(window.id)
                 return false
             }
-            return handleRefusal(window, requested: target, actual: actual)
+            // What we read right now may be the size from before the app applied our request, so a
+            // mismatch is only judged after it has had time to settle.
+            verifyLater(window, requested: target)
+            return false
         case let .failure(failure):
             Log.placement.debug("Placement failed: \(failure.localizedDescription, privacy: .public)")
             return markAttempt(window.id)
         }
     }
 
+    private func verifyLater(_ window: TrackedWindow, requested: CGRect) {
+        verifications[window.id]?.cancel()
+        verifications[window.id] = Task { [weak self] in
+            try? await Task.sleep(for: TilingTuning.settleDelay)
+            guard !Task.isCancelled, let self, let current = self.tracked[window.id],
+                  let settled = current.element.frame
+            else { return }
+            self.verifications[window.id] = nil
+            self.tracked[window.id]?.frame = settled
+            self.expected[window.id] = Expectation(
+                frames: [requested, settled], deadline: Date().addingTimeInterval(TilingTuning.ownMoveSuppression))
+            if ConstraintLearner.accepted(requested: requested, actual: settled) {
+                self.budget.recordSuccess(window.id)
+            } else if self.handleRefusal(current, requested: requested, actual: settled) {
+                self.scheduleReconcile(delay: .zero)
+            }
+        }
+    }
+
     private func handleRefusal(_ window: TrackedWindow, requested: CGRect, actual: CGRect) -> Bool {
-        let limit = displays.first { $0.usableFrame.intersects(actual) }?.usableFrame.size ?? actual.size
+        let limit = ConstraintLearner.plausibleLimit(
+            forUsable: displays.first { $0.usableFrame.intersects(actual) }?.usableFrame.size ?? actual.size)
         if let bundle = window.bundleID {
             let existing = settings.configuration.learnedMinimums[bundle]?.size ?? .zero
             if let learned = ConstraintLearner.learnedMinimum(
@@ -268,14 +353,27 @@ final class TilingCoordinator {
         return markAttempt(window.id)
     }
 
-    /// Counts a failed attempt; after the cap the window is left alone so we never fight it.
+    /// Counts a failed attempt; once the budget is spent the window is left alone so we never fight it.
     private func markAttempt(_ id: WindowID) -> Bool {
-        let count = (attempts[id] ?? 0) + 1
-        attempts[id] = count
-        guard count >= TilingTuning.maxAttemptsPerWindow else { return false }
-        stubborn.insert(id)
+        guard budget.recordRefusal(id) else { return false }
         ui.notice = "Some windows can’t be resized and were left floating."
         return true
+    }
+
+    /// A window that cannot be tiled (too large, refused, or overflow) is moved to the middle of its
+    /// display once, instead of sitting wherever it opened covering the tiles. Only its position is
+    /// written, never its size, so there is nothing to refuse.
+    private func centerOnce(_ window: TrackedWindow, on display: DisplayInfo) {
+        guard !centeredFloating.contains(window.id) else { return }
+        centeredFloating.insert(window.id)
+        let origin = FloatingPlacement.centeredOrigin(size: window.frame.size, in: display.usableFrame)
+        guard abs(origin.x - window.frame.minX) > LayoutDefaults.geometryTolerance
+            || abs(origin.y - window.frame.minY) > LayoutDefaults.geometryTolerance
+        else { return }
+        guard placement.move(window.element, to: origin) != nil else { return }
+        let moved = CGRect(origin: origin, size: window.frame.size)
+        tracked[window.id]?.frame = moved
+        expected[window.id] = Expectation(frames: [moved], deadline: Date().addingTimeInterval(TilingTuning.ownMoveSuppression))
     }
 
     private func recoverIfOffscreen(_ window: TrackedWindow) {
@@ -334,11 +432,12 @@ final class TilingCoordinator {
             plan.placements.filter { if case .tile = $0.role { true } else { false } }.count
         }
         let managedFloating = lastPlans.values.reduce(0) { $0 + $1.placements.filter { $0.role == .floating }.count }
-        ui.floatingCount = managedFloating + userFloating.count + stubborn.count
+        ui.floatingCount = managedFloating + userFloating.count + budget.stubborn.count
         ui.isFocusActive = focus.isActive && cleanSpaceDisplay == nil
         ui.isCleanSpaceActive = cleanSpaceDisplay != nil
         ui.isNoPeekActive = noPeekActive
         ui.canRestorePreviousArrangement = !originalFrames.isEmpty
+        ui.activeWindowFloating = lastActiveWindow.flatMap { tracked[$0] != nil ? userFloating.contains($0) : nil }
     }
 
     func refreshOverlays() {
@@ -371,7 +470,9 @@ final class TilingCoordinator {
 
 enum StageManagerDetector {
     /// Read-only check of the Window Manager preference; there is no public query API.
+    /// If the key is missing or unreadable, tiling is not paused.
     static var isEnabled: Bool {
-        UserDefaults(suiteName: "com.apple.WindowManager")?.bool(forKey: "GloballyEnabled") ?? false
+        let value = CFPreferencesCopyAppValue("GloballyEnabled" as CFString, "com.apple.WindowManager" as CFString)
+        return (value as? Bool) ?? false
     }
 }
