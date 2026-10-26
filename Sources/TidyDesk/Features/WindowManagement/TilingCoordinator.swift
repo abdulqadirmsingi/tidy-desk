@@ -7,6 +7,8 @@ enum TilingTuning {
     /// Geometry notifications this soon after our own write are treated as echoes.
     static let ownMoveSuppression: TimeInterval = 0.7
     static let maxPassesPerReconcile = 3
+    /// Many apps apply a requested size a moment after returning; judge a refusal only after it settles.
+    static let settleDelay: Duration = .milliseconds(180)
     static let cleanSpaceInset = CGSize(width: 0.08, height: 0.06)
     /// A user resize smaller than this is a nudge, not a request to float the window.
     static let floatOnResizeThreshold: CGFloat = 24
@@ -63,6 +65,7 @@ final class TilingCoordinator {
     /// Bounds how long we keep retrying observer registration for apps that are not ready yet.
     var observerRetry = RetrySchedule()
     var observersPending = false
+    var verifications: [WindowID: Task<Void, Never>] = [:]
     /// Raised when something is worth suggesting; the app decides how to present it.
     var onSuggestion: ((SuggestionKind) -> Void)?
     var suggestionPolicy = SuggestionPolicy()
@@ -86,6 +89,7 @@ final class TilingCoordinator {
 
     func stop() {
         reconcileTask?.cancel()
+        verifications.values.forEach { $0.cancel() }
         monitor.stop()
         removeMouseMonitor()
         overlays.removeAll()
@@ -253,7 +257,10 @@ final class TilingCoordinator {
             let visible = Set(present[display.id] ?? [])
             let ids = order.windows(on: display.id).filter { visible.contains($0) }
             let windows = ids.compactMap { tracked[$0] }.map {
-                PlannerWindow(id: $0.id, minimumSize: config.learnedMinimums[$0.bundleID ?? ""]?.size ?? .zero)
+                PlannerWindow(
+                    id: $0.id,
+                    minimumSize: ConstraintLearner.usableMinimum(
+                        learned: config.learnedMinimums[$0.bundleID ?? ""]?.size ?? .zero, usable: display.usableFrame.size))
             }
             let displaySettings = config.settings(for: display.id)
             let plan = TilePlanner.plan(windows: windows, settings: displaySettings, area: display.usableFrame)
@@ -298,15 +305,38 @@ final class TilingCoordinator {
                 budget.recordSuccess(window.id)
                 return false
             }
-            return handleRefusal(window, requested: target, actual: actual)
+            // What we read right now may be the size from before the app applied our request, so a
+            // mismatch is only judged after it has had time to settle.
+            verifyLater(window, requested: target)
+            return false
         case let .failure(failure):
             Log.placement.debug("Placement failed: \(failure.localizedDescription, privacy: .public)")
             return markAttempt(window.id)
         }
     }
 
+    private func verifyLater(_ window: TrackedWindow, requested: CGRect) {
+        verifications[window.id]?.cancel()
+        verifications[window.id] = Task { [weak self] in
+            try? await Task.sleep(for: TilingTuning.settleDelay)
+            guard !Task.isCancelled, let self, let current = self.tracked[window.id],
+                  let settled = current.element.frame
+            else { return }
+            self.verifications[window.id] = nil
+            self.tracked[window.id]?.frame = settled
+            self.expected[window.id] = Expectation(
+                frames: [requested, settled], deadline: Date().addingTimeInterval(TilingTuning.ownMoveSuppression))
+            if ConstraintLearner.accepted(requested: requested, actual: settled) {
+                self.budget.recordSuccess(window.id)
+            } else if self.handleRefusal(current, requested: requested, actual: settled) {
+                self.scheduleReconcile(delay: .zero)
+            }
+        }
+    }
+
     private func handleRefusal(_ window: TrackedWindow, requested: CGRect, actual: CGRect) -> Bool {
-        let limit = displays.first { $0.usableFrame.intersects(actual) }?.usableFrame.size ?? actual.size
+        let limit = ConstraintLearner.plausibleLimit(
+            forUsable: displays.first { $0.usableFrame.intersects(actual) }?.usableFrame.size ?? actual.size)
         if let bundle = window.bundleID {
             let existing = settings.configuration.learnedMinimums[bundle]?.size ?? .zero
             if let learned = ConstraintLearner.learnedMinimum(
