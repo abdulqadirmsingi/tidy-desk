@@ -213,3 +213,35 @@ struct SuggestionWiringTests {
         #expect(raised == 0)
     }
 }
+
+@Suite("Startup wiring", .serialized)
+@MainActor
+struct StartupWiringTests {
+    @Test func installingTheMenuBarCreatesTheIconExactlyOnce() {
+        let model = AppModel()
+        var created = 0
+        model.makeStatusItem = { _ in
+            created += 1
+            return NSObject()
+        }
+        #expect(!model.hasMenuBarItem)
+        model.installMenuBar()
+        model.installMenuBar()
+        #expect(model.hasMenuBarItem)
+        #expect(created == 1)
+    }
+
+    /// `start()` touches hot keys, observers and real windows, so it cannot run in tests. This guards the
+    /// exact regression where the icon was never created because a text edit silently did not apply.
+    @Test func startupCallsInstallMenuBar() throws {
+        let source = try String(
+            contentsOfFile: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+                .appendingPathComponent("Sources/TidyDesk/App/AppModel.swift").path,
+            encoding: .utf8)
+        let start = try #require(source.range(of: "    func start() {"))
+        let body = source[start.upperBound...].prefix { _ in true }
+        let end = body.range(of: "\n    }\n")?.lowerBound ?? body.endIndex
+        #expect(body[..<end].contains("installMenuBar()"), "AppModel.start() must create the menu bar icon")
+    }
+}
